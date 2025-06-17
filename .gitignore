@@ -2,3 +2,5 @@ __pycache__/
 *.py[cod]
 
 .venv/
+
+at_switch_sim.py
