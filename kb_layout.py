@@ -1,14 +1,17 @@
-from collections.abc import Sequence, Callable
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Optional, Union
-
-ActionType = Union[Callable[[], None], str]
+from typing import List, Optional
 
 @dataclass(frozen=True, slots=True)
 class Key:
     label: str
-    action: ActionType
+    action: Optional[str] = None
     dwell: Optional[float] = None
+
+    def __post_init__(self):
+        if len(self.label) > 1 and self.action is None:
+            raise ValueError(f"'action' is required when 'label' is multiple characters"
+                             f"(got {self.label})")
 
 class KeyboardRow(Sequence[Key]):
     def __init__(self, keys: List[Key], *, stretch: bool = True):

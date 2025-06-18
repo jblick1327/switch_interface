@@ -1,3 +1,4 @@
+#stolen from somewhere online i forgot, basically a placeholder for now
 
 import tkinter as tk
 
