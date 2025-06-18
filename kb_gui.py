@@ -1,35 +1,52 @@
-#omg i hate tkinter
-
 import tkinter as tk
 from kb_layout import Keyboard, Key
 from kb_layout_io import load_keyboard, FILE
 
+
 class VirtualKeyboard:
-    def __init__(self, keyboard: Keyboard):
+    """Render a Keyboard as labels you can cycle through and ‘press’ programmatically."""
+
+    def __init__(self, keyboard: Keyboard, on_key: callable):
         self.keyboard = keyboard
+        self.on_key = on_key
+
         self.current_page = 0
         self.highlight_index = 0
-        self.key_widgets = []   # flat list of (widget, Key)
+        self.key_widgets: list[tuple[tk.Label, Key]] = []
 
         self.root = tk.Tk()
         self.root.title("Virtual Keyboard")
 
-        self.entry = tk.Entry(self.root)
-        self.entry.pack(fill=tk.X, padx=5, pady=5)
-
         self.page_frame = tk.Frame(self.root)
         self.page_frame.pack(padx=5, pady=5)
 
-        # Bind your external triggers (e.g. hardware buttons) here:
-        #   self.root.bind("<Right>", lambda e: self.advance_highlight())
-        #   self.root.bind("<Return>", lambda e: self.press_highlighted())
-
         self.render_page()
 
+    # ---------- public control API ----------
+    def advance_highlight(self):
+        """Move highlight cursor to the next key (wrap-around)."""
+        self.highlight_index = (self.highlight_index + 1) % len(self.key_widgets)
+        self._update_highlight()
+
+    def press_highlighted(self):
+        """Invoke on_key callback for the currently highlighted key."""
+        _, key = self.key_widgets[self.highlight_index]
+        self.on_key(key)
+
+    def next_page(self):
+        if self.current_page < len(self.keyboard) - 1:
+            self.current_page += 1
+            self.render_page()
+
+    def prev_page(self):
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.render_page()
+
+    # ---------- internal helpers ----------
     def render_page(self):
-        # clear out old widgets
-        for w,_ in self.key_widgets:
-            w.destroy()
+        for widget, _ in self.key_widgets:
+            widget.destroy()
         self.key_widgets.clear()
 
         page = self.keyboard[self.current_page]
@@ -49,40 +66,31 @@ class VirtualKeyboard:
                     width=width,
                     relief=tk.RAISED,
                     bd=2,
-                    padx=2, pady=2,
-                    bg="white"
+                    bg="white",
+                    padx=2,
+                    pady=2,
                 )
                 lbl.pack(side=tk.LEFT, expand=stretch)
                 self.key_widgets.append((lbl, key))
 
-        # reset highlight to first key on this page
         self.highlight_index = 0
         self._update_highlight()
 
     def _update_highlight(self):
-        # go through all keys, reset bg, then highlight the one at highlight_index
-        for i, (w, _) in enumerate(self.key_widgets):
-            w.config(bg="yellow" if i == self.highlight_index else "white")
+        for idx, (widget, _) in enumerate(self.key_widgets):
+            widget.config(bg="yellow" if idx == self.highlight_index else "white")
 
-    def advance_highlight(self):
-        # move to next key (wrap around)
-        self.highlight_index = (self.highlight_index + 1) % len(self.key_widgets)
-        self._update_highlight()
-
-    def press_highlighted(self):
-        # simulate a press on the highlighted key
-        _, key = self.key_widgets[self.highlight_index]
-        self.on_press(key)
-
-    def on_press(self, key: Key):
-        if isinstance(key.action, str):
-            self.entry.insert(tk.END, key.action)
-        else:
-            self.entry.insert(tk.END, key.label)
-
+    # ---------- main loop ----------
     def run(self):
         self.root.mainloop()
 
+
+# ------------------------------------------------------------------
+# example stub for your pynput-driven typing logic
+def send_key(key: Key):
+    print(f"Would send: {key.action or key.label}")
+
+
 if __name__ == "__main__":
-    vk = VirtualKeyboard(load_keyboard(FILE))
+    vk = VirtualKeyboard(load_keyboard(FILE), on_key=send_key)
     vk.run()
