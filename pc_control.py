@@ -1,4 +1,4 @@
-import pynput
+from pynput.keyboard import Key, Controller
 
 def trigger_press():
     print("Press Detected")
