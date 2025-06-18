@@ -1,6 +1,7 @@
 import tkinter as tk
 from kb_layout import Keyboard, Key
 from kb_layout_io import load_keyboard, FILE
+from pc_control import gui_to_controller
 
 
 class VirtualKeyboard:
@@ -84,13 +85,6 @@ class VirtualKeyboard:
     def run(self):
         self.root.mainloop()
 
-
-# ------------------------------------------------------------------
-# example stub for your pynput-driven typing logic
-def send_key(key: Key):
-    print(f"Would send: {key.action or key.label}")
-
-
 if __name__ == "__main__":
-    vk = VirtualKeyboard(load_keyboard(FILE), on_key=send_key)
+    vk = VirtualKeyboard(load_keyboard(FILE), on_key=gui_to_controller)
     vk.run()
