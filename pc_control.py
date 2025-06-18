@@ -7,11 +7,7 @@ def trigger_press():
     #placeholder
 
 def gui_to_controller(key):
-    if key.action is None:
-        kb.press(key.label)
-        kb.release(key.label)
-    else:
-        print("keep working")
+    pass
 
-#basic predictive text (letter and/or word), n-grams are probably fine for now
+#connect kb_layout.Key to PynKey (with improved key_types.py)
 #linear and line-based scan
