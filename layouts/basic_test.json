@@ -2,10 +2,10 @@
   "pages": [
     {
       "rows": [
-        { "keys": [ {"label":"a"}, {"label":"b"}, {"label":"c"}, {"label":"d"}, {"label":"e"} ] },
-        { "keys": [ {"label":"f"}, {"label":"g"}, {"label":"h"}, {"label":"i"}, {"label":"j"} ] },
+        { "keys": [ {"label":"a", "action": "test"}, {"label":"b"}, {"label":"c"}, {"label":"d"}, {"label":"e"} ] },
+        { "stretch": false, "keys": [ {"label":"f"}, {"label":"g"}, {"label":"h"}, {"label":"i"} ] },
         { "keys": [ {"label":"k"}, {"label":"l"}, {"label":"m"}, {"label":"n"}, {"label":"o"} ] },
-        { "keys": [ {"label":"p"}, {"label":"q"}, {"label":"r"}, {"label":"s"}, {"label":"t"} ] },
+        { "keys": [ {"label":"p"}, {"label":"q"}, {"label":"r"} ] },
         { "keys": [ {"label":"u"}, {"label":"v"}, {"label":"w"}, {"label":"x"}, {"label":"y"} ] }
       ]
     }
