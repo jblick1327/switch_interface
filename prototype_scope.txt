@@ -1,4 +1,0 @@
-Limited, but made to be extensible
-
-Only one switch
-

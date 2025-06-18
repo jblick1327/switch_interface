@@ -1,11 +1,13 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import List, Optional
+from key_types import Action
+
 
 @dataclass(frozen=True, slots=True)
 class Key:
     label: str
-    action: Optional[str] = None
+    action: Optional[Action] = None
     dwell: Optional[float] = None
 
     def __post_init__(self):
