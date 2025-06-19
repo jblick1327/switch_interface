@@ -2,10 +2,13 @@ import tkinter as tk
 from kb_layout import Keyboard, Key
 from kb_layout_io import load_keyboard, FILE
 from pc_control import gui_to_controller
+from scanner import Scanner
+from detection import run_detection
+import threading
 
 
 class VirtualKeyboard:
-    """Render a Keyboard as labels you can cycle through and ‘press’ programmatically."""
+    """Render a Keyboard as labels you can cycle through and press programmatically."""
 
     def __init__(self, keyboard: Keyboard, on_key: callable):
         self.keyboard = keyboard
@@ -85,6 +88,14 @@ class VirtualKeyboard:
     def run(self):
         self.root.mainloop()
 
+
 if __name__ == "__main__":
     vk = VirtualKeyboard(load_keyboard(FILE), on_key=gui_to_controller)
+    scanner = Scanner(vk, dwell=1.0)
+    scanner.start()
+
+    # run detection loop in background thread
+    t = threading.Thread(target=run_detection, args=(scanner,), daemon=True)
+    t.start()
+
     vk.run()
