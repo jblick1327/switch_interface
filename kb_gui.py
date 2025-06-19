@@ -14,7 +14,8 @@ class VirtualKeyboard:
         self.current_page = 0
         self.highlight_index = 0
         self.key_widgets: list[tuple[tk.Label, Key]] = []
-
+        self.row_start_indices: list[int] = []
+        self.row_indices: list[int] = []
         self.root = tk.Tk()
         self.root.title("Virtual Keyboard")
 
@@ -49,14 +50,18 @@ class VirtualKeyboard:
         for widget, _ in self.key_widgets:
             widget.destroy()
         self.key_widgets.clear()
+        self.row_start_indices.clear()
+        self.row_indices.clear()
 
         page = self.keyboard[self.current_page]
         max_len = max(len(r) for r in page)
         base_width = 5
 
-        for row in page:
+        index = 0
+        for r_idx, row in enumerate(page):
             row_frame = tk.Frame(self.page_frame)
             row_frame.pack(fill=tk.X)
+            self.row_start_indices.append(index)
             stretch = row.stretch and len(row) < max_len
             width = int(base_width * max_len / len(row)) if stretch else base_width
 
@@ -73,6 +78,8 @@ class VirtualKeyboard:
                 )
                 lbl.pack(side=tk.LEFT, expand=stretch)
                 self.key_widgets.append((lbl, key))
+                self.row_indices.append(r_idx)
+                index += 1
 
         self.highlight_index = 0
         self._update_highlight()
@@ -80,6 +87,13 @@ class VirtualKeyboard:
     def _update_highlight(self):
         for idx, (widget, _) in enumerate(self.key_widgets):
             widget.config(bg="yellow" if idx == self.highlight_index else "white")
+
+    def row_start_for_index(self, index: int) -> int:
+        """Return the starting key index of the row containing the given key."""
+        if not self.row_start_indices:
+            return 0
+        row_idx = self.row_indices[index]
+        return self.row_start_indices[row_idx]
 
     # ---------- main loop ----------
     def run(self):
