@@ -3,7 +3,7 @@ from enum import Enum, auto
 class Action(str, Enum):         
     def _generate_next_value_(name, *_):
         return name #stringington city? shall we?             
-
+    #physical keys, directly corresponding to pynput actions
     alt        = auto()
     alt_l      = auto()
     alt_r      = auto()
@@ -34,5 +34,10 @@ class Action(str, Enum):
     insert = auto(); menu = auto(); num_lock = auto()
     pause  = auto(); print_screen = auto(); scroll_lock = auto()
 
-#add option for user defined keys
-#add premade keys like predictive text word, predictive text character, and page switch
+    #virtual functions, user defined, etc
+    page_next      = auto()  # switch to next keyboard page
+    page_prev      = auto()  # switch to previous keyboard page
+    reset_scan     = auto()  # move scanner back to first key in row
+    predict_word   = auto()  # predictive text (common‑word) key placeholder
+    predict_letter = auto()  # predictive text (common-letter) key placeholder
+    #add your own
