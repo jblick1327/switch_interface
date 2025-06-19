@@ -19,10 +19,10 @@ def callback(indata: np.ndarray, frames: int,
 
 stream = sd.InputStream(device=DEVICE, channels=CHANNELS, samplerate=SAMPLERATE, callback=callback)
 
-print(sd.query_devices())
+#print(sd.query_devices())
 
-#with stream:
-#    input("Press Enter to stop.\n")
+with stream:
+    input("Press Enter to stop.\n")
 
 
 #switches with momentary spikes will require a higher sample rate
