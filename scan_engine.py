@@ -42,7 +42,9 @@ class Scanner:
         elif action == Action.page_prev:
             self.keyboard.prev_page()
         elif action == Action.reset_scan_row:
-            pass #add row index logic to gui, maybe change flattening behaviour, maybe keep it
+            start_idx = self.keyboard.row_start_for_index(self.keyboard.highlight_index)
+            self.keyboard.highlight_index = start_idx
+            self.keyboard._update_highlight()
         else:
             self.keyboard.press_highlighted()
         

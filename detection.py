@@ -1,6 +1,5 @@
 import math
 from at_switch_sim import session_stream #simulated test module in gitignore for now, gpt generated lmao
-from pc_control import trigger_press
 #from audio_io...
 
 THRESHOLD = 0.3
@@ -25,7 +24,7 @@ for block in session_stream(fs=FS,
         continue
     
     if max(abs(block)) > THRESHOLD:
-        trigger_press()
+        #press
         debug_count += 1
         cooldown = REFRACTORY
 
