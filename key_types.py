@@ -37,7 +37,7 @@ class Action(str, Enum):
     #virtual functions, user defined, etc
     page_next      = auto()  # switch to next keyboard page
     page_prev      = auto()  # switch to previous keyboard page
-    reset_scan     = auto()  # move scanner back to first key in row
+    reset_scan_row = auto()  # move scanner back to first key in row
     predict_word   = auto()  # predictive text (common‑word) key placeholder
     predict_letter = auto()  # predictive text (common-letter) key placeholder
     #add your own

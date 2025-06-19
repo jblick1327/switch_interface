@@ -8,7 +8,7 @@ from key_types import Action
 class Key:
     label: str
     action: Optional[Action] = None
-    dwell: Optional[float] = None
+    dwell_mult: Optional[float] = None #optional per-key multiplier for keyboard scan speed
 
     def __post_init__(self):
         if len(self.label) > 1 and self.action is None:
