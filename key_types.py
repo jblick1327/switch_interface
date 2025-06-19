@@ -1,5 +1,6 @@
 from enum import Enum, auto
 
+#Authoritative list of Actions. Any new key must be added here.
 class Action(str, Enum):         
     def _generate_next_value_(name, *_):
         return name #stringington city? shall we?             
