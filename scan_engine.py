@@ -12,7 +12,7 @@ class Scanner:
         self.keyboard = keyboard
         self.dwell = dwell #in seconds
         self.reset_after_press = reset_after_press
-        self.row_column_scan = row_column_scan
+        self.row_column_scan = row_column_scan #I'll add this and other scanning modes later
         self._running = False
         self._thread: Optional[threading.Thread] = None 
 
@@ -31,8 +31,12 @@ class Scanner:
 
     def _loop(self) -> None:
         while self._running:
-            time.sleep(self.dwell)
-            self.keyboard.root.after(0, self.keyboard.advance_highlight) #gpt helped me i hate tk
+            _, key = self.keyboard.key_widgets[self.keyboard.highlight_index]
+            current_dwell = self.dwell
+            if key.dwell_mult is not None:
+                current_dwell *= key.dwell_mult
+            time.sleep(current_dwell)
+            self.keyboard.root.after(0, self.keyboard.advance_highlight)
 
     def on_press(self) -> None:
         lbl, key = self.keyboard.key_widgets[self.keyboard.highlight_index]
