@@ -22,9 +22,9 @@ def gui_to_controller(key):
     if isinstance(action, str):
         action = Action.__members__.get(action)
 
-    # Predictive‑text key: send the label string at once and exit
+    # Predictive-text key: send the suggested word then a space
     if action == Action.predict_word:
-        kb.type(label)
+        kb.type(label + " ")
         return
 
     os_key = None

@@ -50,7 +50,7 @@ class Scanner:
             self.keyboard.root.after(0, self.keyboard.advance_highlight)
 
     def on_press(self) -> None:
-        """Call this from your Space-bar handler to ‘press’ the highlighted key."""
+        """Activate the currently highlighted key."""
         _, key = self.keyboard.key_widgets[self.keyboard.highlight_index]
         action = key.action
 
