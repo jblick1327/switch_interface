@@ -1,6 +1,5 @@
 import tkinter as tk
 from kb_layout import Keyboard, Key
-from kb_layout_io import load_keyboard, FILE
 from pc_control import gui_to_controller
 
 class VirtualKeyboard:
