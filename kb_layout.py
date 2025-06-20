@@ -8,6 +8,7 @@ from key_types import Action
 class Key:
     label: str
     action: Optional[Action] = None
+    mode: str = "tap"          # ← "tap", "latch" or "toggle"
     dwell_mult: Optional[float] = None #optional per-key multiplier for keyboard scan speed
 
     def __post_init__(self):

@@ -3,45 +3,59 @@ from kb_layout import Keyboard, Key
 from kb_layout_io import load_keyboard, FILE
 from pc_control import gui_to_controller
 
-
 class VirtualKeyboard:
     """Render a Keyboard as labels you can cycle through and ‘press’ programmatically."""
 
     def __init__(self, keyboard: Keyboard, on_key: callable):
         self.keyboard = keyboard
-        self.on_key = on_key
+        self.on_key   = on_key
 
-        self.current_page = 0
+        self.caps_on     = False
+        self.shift_armed = False
+
+        self.current_page   = 0
         self.highlight_index = 0
         self.key_widgets: list[tuple[tk.Label, Key]] = []
         self.row_start_indices: list[int] = []
         self.row_indices: list[int] = []
+
         self.root = tk.Tk()
         self.root.title("Virtual Keyboard")
         try:
-            # Border-less overlay that never takes keyboard focus
-            self.root.overrideredirect(True)      # removes decorations *and* focusability
-            self.root.attributes("-topmost", True)  # always visible
-            self.root.attributes("-alpha", 0.93)    # optional translucency
+            self.root.overrideredirect(True)
+            self.root.attributes("-topmost", True)
+            self.root.attributes("-alpha", 0.93)
         except tk.TclError:
-            # Attributes may not be supported on some platforms; proceed anyway
             pass
 
         self.page_frame = tk.Frame(self.root)
         self.page_frame.pack(padx=5, pady=5)
-
         self.render_page()
 
-    # ---------- public control API ----------
+    # ───────── public control API ──────────────────────────────────────────
     def advance_highlight(self):
-        """Move highlight cursor to the next key (wrap-around)."""
         self.highlight_index = (self.highlight_index + 1) % len(self.key_widgets)
         self._update_highlight()
 
     def press_highlighted(self):
-        """Invoke on_key callback for the currently highlighted key."""
-        _, key = self.key_widgets[self.highlight_index]
-        self.on_key(key)
+        widget, key = self.key_widgets[self.highlight_index]
+        mode   = getattr(key, "mode", "tap")
+        action = getattr(key, "action", None)
+
+        # update modifier state BEFORE sending to OS
+        if mode == "toggle" and action == "caps_lock":
+            self.caps_on = not self.caps_on
+        elif mode == "latch" and action == "shift":
+            self.shift_armed = not self.shift_armed
+
+        self.on_key(key)                         # hand to pc_control
+
+        # one-shot Shift ends right after the next tap key
+        if mode == "tap" and self.shift_armed:
+            self.shift_armed = False
+
+        self._refresh_letters()                  # letters + tints
+        self._update_highlight()                 # keep yellow cursor
 
     def next_page(self):
         if self.current_page < len(self.keyboard) - 1:
@@ -53,7 +67,23 @@ class VirtualKeyboard:
             self.current_page -= 1
             self.render_page()
 
-    # ---------- internal helpers ----------
+    # ───────── internal helpers ───────────────────────────────────────────
+    def _bg_for_key(self, key: Key) -> str:
+        if key.mode == "toggle" and key.action == "caps_lock" and self.caps_on:
+            return "#b0d4ff"                     # Caps tint
+        if key.mode == "latch"  and key.action == "shift"    and self.shift_armed:
+            return "#b0d4ff"                     # Shift tint
+        return "white"
+
+    def _refresh_letters(self):
+        upper = self.caps_on or self.shift_armed
+        for widget, k in self.key_widgets:
+            # flip label
+            if len(k.label) == 1 and k.label.isalpha():
+                widget.config(text=k.label.upper() if upper else k.label.lower())
+            # set base background (highlight comes later)
+            widget.config(bg=self._bg_for_key(k))
+
     def render_page(self):
         for widget, _ in self.key_widgets:
             widget.destroy()
@@ -62,7 +92,7 @@ class VirtualKeyboard:
         self.row_indices.clear()
 
         page = self.keyboard[self.current_page]
-        max_len = max(len(r) for r in page)
+        max_len   = max(len(r) for r in page)
         base_width = 5
 
         index = 0
@@ -70,19 +100,15 @@ class VirtualKeyboard:
             row_frame = tk.Frame(self.page_frame)
             row_frame.pack(fill=tk.X)
             self.row_start_indices.append(index)
+
             stretch = row.stretch and len(row) < max_len
-            width = int(base_width * max_len / len(row)) if stretch else base_width
+            width   = int(base_width * max_len / len(row)) if stretch else base_width
 
             for key in row:
                 lbl = tk.Label(
-                    row_frame,
-                    text=key.label,
-                    width=width,
-                    relief=tk.RAISED,
-                    bd=2,
-                    bg="white",
-                    padx=2,
-                    pady=2,
+                    row_frame, text=key.label, width=width,
+                    relief=tk.RAISED, bd=2, padx=2, pady=2,
+                    bg=self._bg_for_key(key)
                 )
                 lbl.pack(side=tk.LEFT, expand=stretch)
                 self.key_widgets.append((lbl, key))
@@ -93,20 +119,10 @@ class VirtualKeyboard:
         self._update_highlight()
 
     def _update_highlight(self):
-        for idx, (widget, _) in enumerate(self.key_widgets):
-            widget.config(bg="yellow" if idx == self.highlight_index else "white")
-
-    def row_start_for_index(self, index: int) -> int:
-        """Return the starting key index of the row containing the given key."""
-        if not self.row_start_indices:
-            return 0
-        row_idx = self.row_indices[index]
-        return self.row_start_indices[row_idx]
+        for idx, (widget, key) in enumerate(self.key_widgets):
+            bg = "yellow" if idx == self.highlight_index else self._bg_for_key(key)
+            widget.config(bg=bg)
 
     # ---------- main loop ----------
     def run(self):
         self.root.mainloop()
-
-if __name__ == "__main__":
-    vk = VirtualKeyboard(load_keyboard(FILE), on_key=gui_to_controller)
-    vk.run()
