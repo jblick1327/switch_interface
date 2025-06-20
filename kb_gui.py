@@ -67,6 +67,11 @@ class VirtualKeyboard:
             self.current_page -= 1
             self.render_page()
 
+    def row_start_for_index(self, index: int) -> int:
+        """Return the first key index of the row containing ``index``."""
+        row = self.row_indices[index]
+        return self.row_start_indices[row]
+
     # ───────── internal helpers ───────────────────────────────────────────
     def _bg_for_key(self, key: Key) -> str:
         if key.mode == "toggle" and key.action == "caps_lock" and self.caps_on:
