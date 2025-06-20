@@ -18,6 +18,14 @@ class VirtualKeyboard:
         self.row_indices: list[int] = []
         self.root = tk.Tk()
         self.root.title("Virtual Keyboard")
+        try:
+            # Border-less overlay that never takes keyboard focus
+            self.root.overrideredirect(True)      # removes decorations *and* focusability
+            self.root.attributes("-topmost", True)  # always visible
+            self.root.attributes("-alpha", 0.93)    # optional translucency
+        except tk.TclError:
+            # Attributes may not be supported on some platforms; proceed anyway
+            pass
 
         self.page_frame = tk.Frame(self.root)
         self.page_frame.pack(padx=5, pady=5)
