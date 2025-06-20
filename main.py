@@ -1,9 +1,9 @@
-# main.py
+#TEMPORARY entrance point for testing
 from kb_layout_io import load_keyboard, FILE
 from kb_gui        import VirtualKeyboard
 from pc_control    import gui_to_controller
 from scan_engine   import Scanner
-import keyboard                       # pip install keyboard
+import keyboard
 
 # ── GUI & Scanner ───────────────────────────────────────────────────────────────
 vk = VirtualKeyboard(load_keyboard(FILE), on_key=gui_to_controller)
@@ -27,7 +27,6 @@ def _space_up(event):
     event.suppress = True            # same reason as above
     scanner.on_press()
 
-# These hooks affect **only** the space key.
 keyboard.on_press_key(  "space", _space_down,  suppress=True)
 keyboard.on_release_key("space", _space_up,    suppress=True)
 

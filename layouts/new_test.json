@@ -1,0 +1,68 @@
+{
+  "pages": [
+    {
+      "rows": [
+        {
+          "keys": [
+            { "label": "Esc",  "action": "esc" },
+            { "label": "1" }, { "label": "2" }, { "label": "3" },
+            { "label": "4" }, { "label": "5" }, { "label": "6" },
+            { "label": "7" }, { "label": "8" }, { "label": "9" },
+            { "label": "0" }, { "label": "-",   "action": "minus" },
+            { "label": "=",   "action": "equals" },
+            { "label": "Back", "action": "backspace" }
+          ]
+        },
+
+        {
+          "keys": [
+            { "label": "Tab", "action": "tab" },
+            { "label": "q" }, { "label": "w" }, { "label": "e" },
+            { "label": "r" }, { "label": "t" }, { "label": "y" },
+            { "label": "u" }, { "label": "i" }, { "label": "o" },
+            { "label": "p" },
+            { "label": "[",  "action": "bracket_left" },
+            { "label": "]",  "action": "bracket_right" },
+            { "label": "\\", "action": "backslash" }
+          ]
+        },
+
+        {
+          "keys": [
+            { "label": "Caps",  "action": "caps_lock", "mode": "toggle" },
+            { "label": "a" }, { "label": "s" }, { "label": "d" },
+            { "label": "f" }, { "label": "g" }, { "label": "h" },
+            { "label": "j" }, { "label": "k" }, { "label": "l" },
+            { "label": ";",  "action": "semicolon" },
+            { "label": "'",  "action": "quote" },
+            { "label": "Enter", "action": "enter" }
+          ]
+        },
+
+        {
+          "keys": [
+            { "label": "Shift", "action": "shift", "mode": "latch" },
+            { "label": "z" }, { "label": "x" }, { "label": "c" },
+            { "label": "v" }, { "label": "b" }, { "label": "n" },
+            { "label": "m" },
+            { "label": ",",  "action": "comma" },
+            { "label": ".",  "action": "period" },
+            { "label": "/",  "action": "slash" },
+            { "label": "Shift", "action": "shift", "mode": "latch" }
+          ]
+        },
+
+        {
+          "stretch": true,
+          "keys": [
+            { "label": "Ctrl", "action": "ctrl", "mode": "latch" },
+            { "label": "Alt",  "action": "alt",  "mode": "latch" },
+            { "label": "Space", "action": "space" },
+            { "label": "Alt",  "action": "alt",  "mode": "latch" },
+            { "label": "Ctrl", "action": "ctrl", "mode": "latch" }
+          ]
+        }
+      ]
+    }
+  ]
+}

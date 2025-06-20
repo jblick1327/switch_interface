@@ -2,7 +2,7 @@ import json
 from kb_layout import Key, KeyboardRow, KeyboardPage, Keyboard
 
 FOLDER = None
-FILE = 'layouts/basic_test.json'
+FILE = 'layouts/new_test.json'
 
 def load_keyboard(path: str = FILE) -> Keyboard:
     """Load a :class:`Keyboard` definition from ``path``."""
@@ -19,7 +19,8 @@ def load_keyboard(path: str = FILE) -> Keyboard:
                     Key(
                         key['label'],
                         key.get('action'),
-                        key.get('dwell'),
+                        key.get('mode', 'tap'),
+                        key.get('dwell') or key.get('dwell_mult')
                     )
                 )
             row_objects.append(
