@@ -32,5 +32,3 @@ def load_keyboard(path: str = FILE) -> Keyboard:
         page_objects.append(KeyboardPage(row_objects))
 
     return Keyboard(page_objects)
-
-kb = load_keyboard(FILE)
