@@ -1,6 +1,9 @@
 import tkinter as tk
 from kb_layout import Keyboard, Key
 from pc_control import gui_to_controller
+from key_types import Action
+from predictive import suggest
+from types import SimpleNamespace
 
 class VirtualKeyboard:
     """Render a Keyboard as labels you can cycle through and ‘press’ programmatically."""
@@ -17,6 +20,7 @@ class VirtualKeyboard:
         self.key_widgets: list[tuple[tk.Label, Key]] = []
         self.row_start_indices: list[int] = []
         self.row_indices: list[int] = []
+        self.current_word: str = ""
 
         self.root = tk.Tk()
         self.root.title("Virtual Keyboard")
@@ -40,6 +44,7 @@ class VirtualKeyboard:
         widget, key = self.key_widgets[self.highlight_index]
         mode   = getattr(key, "mode", "tap")
         action = getattr(key, "action", None)
+        label  = widget.cget("text")
 
         # update modifier state BEFORE sending to OS
         if mode == "toggle" and action == "caps_lock":
@@ -47,7 +52,24 @@ class VirtualKeyboard:
         elif mode == "latch" and action == "shift":
             self.shift_armed = not self.shift_armed
 
-        self.on_key(key)                         # hand to pc_control
+        send_key = key
+        if action == Action.predict_word:
+            send_key = SimpleNamespace(label=label, action=action, mode=mode)
+        self.on_key(send_key)                    # hand to pc_control
+
+        # update current word buffer
+        if action == Action.predict_word:
+            self.current_word = ""
+        elif action == Action.backspace:
+            self.current_word = self.current_word[:-1]
+        elif len(label) == 1 and label.isalpha():
+            self.current_word += label.lower()
+        elif action in (Action.space, Action.enter):
+            self.current_word = ""
+        else:
+            self.current_word = ""
+
+        self._update_predictions()
 
         # one-shot Shift ends right after the next tap key
         if mode == "tap" and self.shift_armed:
@@ -88,6 +110,15 @@ class VirtualKeyboard:
             # set base background (highlight comes later)
             widget.config(bg=self._bg_for_key(k))
 
+    def _update_predictions(self):
+        words = suggest(self.current_word, 3)
+        idx = 0
+        for widget, k in self.key_widgets:
+            if getattr(k, "action", None) == Action.predict_word:
+                label = words[idx] if idx < len(words) else ""
+                widget.config(text=label)
+                idx += 1
+
     def render_page(self):
         # clear out old widgets from the frame before rendering the new page
         for child in self.page_frame.winfo_children():
@@ -122,6 +153,7 @@ class VirtualKeyboard:
 
         self.highlight_index = 0
         self._update_highlight()
+        self._update_predictions()
 
     def _update_highlight(self):
         for idx, (widget, key) in enumerate(self.key_widgets):
