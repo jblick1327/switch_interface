@@ -85,8 +85,9 @@ class VirtualKeyboard:
             widget.config(bg=self._bg_for_key(k))
 
     def render_page(self):
-        for widget, _ in self.key_widgets:
-            widget.destroy()
+        # clear out old widgets from the frame before rendering the new page
+        for child in self.page_frame.winfo_children():
+            child.destroy()
         self.key_widgets.clear()
         self.row_start_indices.clear()
         self.row_indices.clear()
