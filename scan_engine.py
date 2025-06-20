@@ -1,5 +1,4 @@
 import threading
-import time
 from typing import Optional
 
 from kb_gui import VirtualKeyboard
@@ -7,14 +6,22 @@ from key_types import Action
 
 
 class Scanner:
-    def __init__(self, keyboard: VirtualKeyboard, dwell: float = 1.0,
-                 reset_after_press: bool = True, row_column_scan: bool = False) -> None:
+    def __init__(
+        self,
+        keyboard: VirtualKeyboard,
+        dwell: float = 1.0,
+        reset_after_press: bool = True,
+        row_column_scan: bool = False,
+    ) -> None:
         self.keyboard = keyboard
-        self.dwell = dwell #in seconds
+        self.dwell = dwell                      # seconds each key stays lit
         self.reset_after_press = reset_after_press
-        self.row_column_scan = row_column_scan #I'll add this and other scanning modes later
+        self.row_column_scan = row_column_scan  # placeholder for future modes
+
         self._running = False
-        self._thread: Optional[threading.Thread] = None 
+        self._thread: Optional[threading.Thread] = None
+
+        self._reset_event = threading.Event()
 
     def start(self) -> None:
         if self._running:
@@ -30,28 +37,35 @@ class Scanner:
             self._thread = None
 
     def _loop(self) -> None:
+        """Runs in a background thread, advancing the highlight at the dwell rate."""
         while self._running:
-            _, key = self.keyboard.key_widgets[self.keyboard.highlight_index]
-            current_dwell = self.dwell
-            if key.dwell_mult is not None:
-                current_dwell *= key.dwell_mult
-            time.sleep(current_dwell)
+            idx, (_, cur_key) = self.keyboard.highlight_index, self.keyboard.key_widgets[self.keyboard.highlight_index]
+            dwell = self.dwell * (cur_key.dwell_mult or 1)
+
+            # Sleep, but wake early if _reset_event is set by on_press().
+            if self._reset_event.wait(dwell):
+                self._reset_event.clear()
+                continue  # restart the dwell for the new index
+
             self.keyboard.root.after(0, self.keyboard.advance_highlight)
 
     def on_press(self) -> None:
-        lbl, key = self.keyboard.key_widgets[self.keyboard.highlight_index]
+        """Call this from your Space-bar handler to ‘press’ the highlighted key."""
+        _, key = self.keyboard.key_widgets[self.keyboard.highlight_index]
         action = key.action
+
         if action == Action.page_next:
             self.keyboard.next_page()
         elif action == Action.page_prev:
             self.keyboard.prev_page()
         elif action == Action.reset_scan_row:
-            start_idx = self.keyboard.row_start_for_index(self.keyboard.highlight_index)
-            self.keyboard.highlight_index = start_idx
+            start = self.keyboard.row_start_for_index(self.keyboard.highlight_index)
+            self.keyboard.highlight_index = start
             self.keyboard._update_highlight()
         else:
             self.keyboard.press_highlighted()
-        
+
         if self.reset_after_press:
             self.keyboard.highlight_index = 0
             self.keyboard._update_highlight()
+            self._reset_event.set()
