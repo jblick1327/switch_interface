@@ -1,7 +1,7 @@
 from enum import Enum, auto
 
 #Authoritative list of Actions. Any new key must be added here.
-class Action(str, Enum):         
+class Action(str, Enum):
     def _generate_next_value_(name, *_):
         return name #stringington city? shall we?             
     #physical keys, directly corresponding to pynput actions
@@ -42,3 +42,23 @@ class Action(str, Enum):
     predict_word   = auto()  # predictive text (common‑word) key placeholder
     predict_letter = auto()  # predictive text (common-letter) key placeholder
     #add your own
+
+    _VIRTUAL_ACTIONS = {
+        'page_next', 'page_prev', 'reset_scan_row',
+        'predict_word', 'predict_letter',
+    }
+
+    def is_virtual(self) -> bool:
+        """Return ``True`` if this action should not emit an OS key event."""
+        return self.name in self._VIRTUAL_ACTIONS
+
+    def to_os_key(self):
+        """Return the matching :class:`pynput.keyboard.Key` or ``None``."""
+        if self.is_virtual():
+            return None
+
+        from pynput.keyboard import Key as OSKey
+        try:
+            return getattr(OSKey, self.value)
+        except AttributeError:
+            return None
