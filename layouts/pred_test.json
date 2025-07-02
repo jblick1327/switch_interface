@@ -1,0 +1,30 @@
+{
+  "pages": [
+    {
+      "rows": [
+        {
+          "stretch": true, "keys": [
+            {"label": "", "action": "predict_word"},
+            {"label": "", "action": "predict_word"},
+            {"label": "", "action": "predict_word"}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "a"}, {"label": "b"}, {"label": "c"}, {"label": "d"}, {"label": "e"}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "f"}, {"label": "g"}, {"label": "h"}, {"label": "i"}, {"label": "j"}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "k"}, {"label": "l"}, {"label": "m"}, {"label": "n"}, {"label": "o"}
+          ]
+        }
+      ]
+    }
+  ]
+}
