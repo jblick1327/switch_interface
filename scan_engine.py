@@ -1,4 +1,3 @@
-import threading
 from typing import Optional
 
 from kb_gui import VirtualKeyboard
@@ -18,49 +17,22 @@ class Scanner:
         self.reset_after_press = reset_after_press
         self.row_column_scan = row_column_scan  # placeholder for future modes
 
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-
-        self._reset_event = threading.Event()
         self._after_id: Optional[str] = None
 
     def start(self) -> None:
-        if self._running:
-            return
-        self._running = True
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
+        if self._after_id is None:
+            self._tick()
 
     def stop(self) -> None:
-        self._running = False
-        if self._thread is not None:
-            self._thread.join()
-            self._thread = None
-
-    def _loop(self) -> None:
-        """Runs in a background thread, advancing the highlight at the dwell rate."""
-        while self._running:
-            idx, (_, cur_key) = self.keyboard.highlight_index, self.keyboard.key_widgets[self.keyboard.highlight_index]
-            dwell = self.dwell * (cur_key.dwell_mult or 1)
-
-            # Sleep, but wake early if _reset_event is set by on_press().
-            if self._reset_event.wait(dwell):
-                self._reset_event.clear()
-                if self._after_id is not None:
-                    aid = self._after_id
-                    self._after_id = None
-                    # cancel *from* the Tk thread
-                    self.keyboard.root.after(
-                        0,
-                        lambda aid=aid: self.keyboard.root.after_cancel(aid)
-                    )
-                continue  # restart the dwell for the new index
-
-            def _adv():
-                self._after_id = None
-                self.keyboard.advance_highlight()
-
-            self._after_id = self.keyboard.root.after(0, _adv)
+        if self._after_id is not None:
+            self.keyboard.root.after_cancel(self._after_id)
+            self._after_id = None
+    def _tick(self) -> None:
+        idx = self.keyboard.highlight_index
+        _, key = self.keyboard.key_widgets[idx]
+        dwell_ms = int(self.dwell * 1000 * (key.dwell_mult or 1))
+        self.keyboard.advance_highlight()
+        self._after_id = self.keyboard.root.after(dwell_ms, self._tick)
 
     def on_press(self) -> None:
         """Activate the currently highlighted key."""
@@ -81,4 +53,8 @@ class Scanner:
         if self.reset_after_press:
             self.keyboard.highlight_index = 0
             self.keyboard._update_highlight()
-            self._reset_event.set()
+
+        if self._after_id is not None:
+            self.keyboard.root.after_cancel(self._after_id)
+            self._after_id = None
+        self._tick()
