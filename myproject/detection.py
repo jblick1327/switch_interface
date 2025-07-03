@@ -12,12 +12,13 @@ class EdgeState:
     armed: bool
     cooldown: int
     prev_sample: float = 0.0
+    bias: float = 0.0  
 
 def detect_edges(
     block: np.ndarray,
     state: EdgeState,
-    upper_threshold: float,
-    lower_threshold: float,
+    upper_offset: float,
+    lower_offset: float,
     refractory_samples: int,
 ) -> Tuple[EdgeState, bool]:
     """Detect a falling edge in ``block``.
@@ -27,9 +28,16 @@ def detect_edges(
 
     if block.ndim != 1:
         raise ValueError("block must be a 1-D array")
+    
+    if state.armed:
+        # exponential moving average over the current block
+        state.bias = 0.995*state.bias + 0.005*float(block.mean())
+
+    dyn_upper = state.bias + upper_offset 
+    dyn_lower = state.bias + lower_offset
 
     samples = np.concatenate(([state.prev_sample], block))
-    crossings = (samples[:-1] >= upper_threshold) & (samples[1:] <= lower_threshold)
+    crossings = (samples[:-1] >= dyn_upper) & (samples[1:] <= dyn_lower)
 
     armed = state.armed
     cooldown = state.cooldown
@@ -57,23 +65,23 @@ def detect_edges(
             cooldown = 0
             armed = True
 
-    return EdgeState(armed=armed, cooldown=cooldown, prev_sample=block[-1] if len(block) else state.prev_sample), press_index is not None
-
+    return EdgeState(armed=armed, cooldown=cooldown, prev_sample=block[-1] 
+                     if len(block) else state.prev_sample, bias=state.bias), press_index is not None
 
 
 def listen(
     on_press: Callable[[], None],
     *,
-    upper_threshold: float = -0.2,
-    lower_threshold: float = -0.5,
+    upper_offset: float = -0.2,
+    lower_offset: float = -0.5,
     samplerate: int = 44_100,
     blocksize: int = 256,
     debounce_ms: int = 40,
     device: Optional[int | str] = None,
 ) -> None:
     import sounddevice as sd
-    if upper_threshold <= lower_threshold:
-        raise ValueError("upper_threshold must be > lower_threshold (both negative values)")
+    if upper_offset <= lower_offset:
+        raise ValueError("upper_offset must be > lower_offset (both negative values)")
 
     refractory_samples = int(math.ceil((debounce_ms / 1_000) * samplerate))
 
@@ -86,8 +94,8 @@ def listen(
         state, pressed = detect_edges(
             mono,
             state,
-            upper_threshold,
-            lower_threshold,
+            upper_offset,
+            lower_offset,
             refractory_samples,
         )
         if pressed:
@@ -108,8 +116,8 @@ def listen(
             return
 
 if __name__ == "__main__":
-    UPPER_THRESHOLD = -0.2
-    LOWER_THRESHOLD = -0.5   # current sample must drop below this
+    upper_offset = -0.2
+    lower_offset = -0.5   # current sample must drop below this
     BLOCKSIZE = 256
     DEBOUNCE_MS = 35
 
@@ -129,8 +137,8 @@ if __name__ == "__main__":
     print("Listening…  (Ctrl‑C to stop)")
     listen(
         _on_press,
-        upper_threshold=UPPER_THRESHOLD,
-        lower_threshold=LOWER_THRESHOLD,
+        upper_offset=upper_offset,
+        lower_offset=lower_offset,
         blocksize=BLOCKSIZE,
         debounce_ms=DEBOUNCE_MS,
     )
