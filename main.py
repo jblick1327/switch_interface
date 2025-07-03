@@ -8,7 +8,7 @@ import threading
 
 # ── GUI & Scanner ───────────────────────────────────────────────────────────────
 vk = VirtualKeyboard(load_keyboard(FILE), on_key=gui_to_controller)
-scanner = Scanner(vk, dwell=0.4)
+scanner = Scanner(vk, dwell=0.6)
 scanner.start()
 
 # ── Detection hook ─────────────────────────────────────────────────────────────

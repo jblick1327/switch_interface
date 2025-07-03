@@ -11,11 +11,11 @@ import sounddevice as sd
 def listen(
     on_press: Callable[[], None],
     *,
-    upper_threshold: float = -0.10,
-    lower_threshold: float = -0.35,
+    upper_threshold: float = -0.2,
+    lower_threshold: float = -0.5,
     samplerate: int = 44_100,
     blocksize: int = 256,
-    debounce_ms: int = 20,
+    debounce_ms: int = 40,
     device: Optional[int | str] = None,
 ) -> None:
     if upper_threshold <= lower_threshold:
