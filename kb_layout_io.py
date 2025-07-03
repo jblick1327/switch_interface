@@ -2,7 +2,7 @@ import json
 from kb_layout import Key, KeyboardRow, KeyboardPage, Keyboard
 
 FOLDER = None
-FILE = 'layouts/new_test.json'
+FILE = 'layouts/pred_test.json'
 
 def load_keyboard(path: str = FILE) -> Keyboard:
     """Load a :class:`Keyboard` definition from ``path``."""

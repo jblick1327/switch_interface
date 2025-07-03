@@ -23,6 +23,23 @@
           "keys": [
             {"label": "k"}, {"label": "l"}, {"label": "m"}, {"label": "n"}, {"label": "o"}
           ]
+        },
+        {
+          "keys": [
+            {"label": "p"}, {"label": "q"}, {"label": "r"}, {"label": "s"}, {"label": "t"}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "u"}, {"label": "v"}, {"label": "w"}, {"label": "x"}, {"label": "y"}
+          ]
+        },
+        {
+          "stretch":true, "keys": [
+            {"label": "z"}, { "label": ".",  "action": "period" }, 
+            { "label": "Space", "action": "space" }, 
+            { "label": "Caps",  "action": "caps_lock", "mode": "toggle" }
+          ]
         }
       ]
     }

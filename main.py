@@ -13,7 +13,7 @@ scanner.start()
 
 # ── Detection hook ─────────────────────────────────────────────────────────────
 def _on_switch():
-    scanner.on_press()
+    vk.root.after(0, scanner.on_press)
 
 threading.Thread(target=listen, args=(_on_switch,), daemon=True).start()
 
