@@ -2,11 +2,65 @@ from __future__ import annotations
 
 import math
 import time
+import argparse
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import numpy as np
-import sounddevice as sd
+
+@dataclass
+class EdgeState:
+    armed: bool
+    cooldown: int
+    prev_sample: float = 0.0
+
+def detect_edges(
+    block: np.ndarray,
+    state: EdgeState,
+    upper_threshold: float,
+    lower_threshold: float,
+    refractory_samples: int,
+) -> Tuple[EdgeState, bool]:
+    """Detect a falling edge in ``block``.
+
+    Returns the updated ``EdgeState`` and whether a press was detected.
+    """
+
+    if block.ndim != 1:
+        raise ValueError("block must be a 1-D array")
+
+    samples = np.concatenate(([state.prev_sample], block))
+    crossings = (samples[:-1] >= upper_threshold) & (samples[1:] <= lower_threshold)
+
+    armed = state.armed
+    cooldown = state.cooldown
+    press_index: int | None = None
+
+    if not armed:
+        if cooldown >= len(block):
+            cooldown -= len(block)
+        else:
+            armed = True
+            offset = cooldown
+            remaining = crossings[offset:]
+            idxs = np.flatnonzero(remaining)
+            if idxs.size:
+                press_index = idxs[0] + offset
+    else:
+        idxs = np.flatnonzero(crossings)
+        if idxs.size:
+            press_index = idxs[0]
+
+    if press_index is not None:
+        armed = False
+        cooldown = refractory_samples - (len(block) - press_index - 1)
+        if cooldown <= 0:
+            cooldown = 0
+            armed = True
+
+    return EdgeState(armed=armed, cooldown=cooldown, prev_sample=block[-1] if len(block) else state.prev_sample), press_index is not None
+
+
 
 def listen(
     on_press: Callable[[], None],
@@ -18,31 +72,27 @@ def listen(
     debounce_ms: int = 40,
     device: Optional[int | str] = None,
 ) -> None:
+    import sounddevice as sd
     if upper_threshold <= lower_threshold:
         raise ValueError("upper_threshold must be > lower_threshold (both negative values)")
 
     refractory_samples = int(math.ceil((debounce_ms / 1_000) * samplerate))
 
-    state = _EdgeState(armed=True, cooldown=0)
+    state = EdgeState(armed=True, cooldown=0)
 
-    def _callback(indata: np.ndarray, frames: int, _: int, __: int):
+    def _callback(indata: np.ndarray, frames: int, _: int, __: int) -> None:
         nonlocal state
-        # Flatten to mono – take max magnitude across channels to be safe.
         mono = indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0]
 
-        prev = state.prev_sample
-        for sample in mono:
-            if state.armed:
-                if prev >= upper_threshold and sample <= lower_threshold:
-                    on_press()
-                    state.armed = False
-                    state.cooldown = refractory_samples
-            else:
-                state.cooldown -= 1
-                if state.cooldown <= 0:
-                    state.armed = True
-            prev = sample
-        state.prev_sample = prev
+        state, pressed = detect_edges(
+            mono,
+            state,
+            upper_threshold,
+            lower_threshold,
+            refractory_samples,
+        )
+        if pressed:
+            on_press()
 
     with sd.InputStream(
         samplerate=samplerate,
@@ -58,37 +108,89 @@ def listen(
         except KeyboardInterrupt:
             return
 
+def _detect_edges_loop(
+    block: np.ndarray,
+    state: EdgeState,
+    upper_threshold: float,
+    lower_threshold: float,
+    refractory_samples: int,
+) -> Tuple[EdgeState, bool]:
+    """Reference implementation using a Python loop (for benchmarking)."""
 
-@dataclass
-class _EdgeState:
-    armed: bool
-    cooldown: int
-    prev_sample: float = 0.0
+    armed = state.armed
+    cooldown = state.cooldown
+    prev = state.prev_sample
+    pressed = False
+
+    for sample in block:
+        if armed:
+            if prev >= upper_threshold and sample <= lower_threshold:
+                pressed = True
+                armed = False
+                cooldown = refractory_samples
+        else:
+            cooldown -= 1
+            if cooldown <= 0:
+                armed = True
+        prev = sample
+
+    return EdgeState(armed=armed, cooldown=cooldown, prev_sample=prev), pressed
+
+
+def bench() -> None:
+    """Run a small benchmark comparing loop and vectorised versions."""
+
+    rng = np.random.default_rng(0)
+    block = rng.normal(scale=0.1, size=256).astype(np.float32)
+    iters = 10_000
+    refr = 1764
+    state = EdgeState(True, 0)
+
+    t0 = time.perf_counter()
+    for _ in range(iters):
+        state, _ = detect_edges(block, state, -0.2, -0.5, refr)
+    vec = time.perf_counter() - t0
+
+    state = EdgeState(True, 0)
+    t0 = time.perf_counter()
+    for _ in range(iters):
+        state, _ = _detect_edges_loop(block, state, -0.2, -0.5, refr)
+    loop = time.perf_counter() - t0
+
+    print(f"vectorised: {vec:.4f}s  loop: {loop:.4f}s  speed-up: {loop/vec:.1f}x")
+
 
 if __name__ == "__main__":
-    UPPER_THRESHOLD = -0.2
-    LOWER_THRESHOLD = -0.5   # current sample must drop below this
-    BLOCKSIZE       = 256
-    DEBOUNCE_MS     = 35
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bench", action="store_true", help="run benchmark")
+    args = parser.parse_args()
 
-#if needed, consider adapting threshold based on proximity to previous switch,
-#as multiple valid presses in succession will shift the upper and lower thresholds up slightly
+    if args.bench:
+        bench()
+    else:
+        UPPER_THRESHOLD = -0.2
+        LOWER_THRESHOLD = -0.5   # current sample must drop below this
+        BLOCKSIZE = 256
+        DEBOUNCE_MS = 35
 
-    import datetime as _dt
+        # if needed, consider adapting threshold based on proximity to previous switch,
+        # as multiple valid presses in succession will shift the upper and lower thresholds up slightly
 
-    presscount = 0
+        import datetime as _dt
 
-    def _on_press():
-        ts = _dt.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        global presscount
-        presscount+=1
-        print(f"{ts}  PRESS. (count: {presscount})")
+        presscount = 0
 
-    print("Listening…  (Ctrl‑C to stop)")
-    listen(
-        _on_press,
-        upper_threshold=UPPER_THRESHOLD,
-        lower_threshold=LOWER_THRESHOLD,
-        blocksize=BLOCKSIZE,
-        debounce_ms=DEBOUNCE_MS,
-    )
+        def _on_press() -> None:
+            global presscount
+            ts = _dt.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            presscount += 1
+            print(f"{ts}  PRESS. (count: {presscount})")
+
+        print("Listening…  (Ctrl‑C to stop)")
+        listen(
+            _on_press,
+            upper_threshold=UPPER_THRESHOLD,
+            lower_threshold=LOWER_THRESHOLD,
+            blocksize=BLOCKSIZE,
+            debounce_ms=DEBOUNCE_MS,
+        )
