@@ -47,11 +47,13 @@ class Scanner:
             if self._reset_event.wait(dwell):
                 self._reset_event.clear()
                 if self._after_id is not None:
-                    try:
-                        self.keyboard.root.after_cancel(self._after_id)
-                    except Exception:
-                        pass
+                    aid = self._after_id
                     self._after_id = None
+                    # cancel *from* the Tk thread
+                    self.keyboard.root.after(
+                        0,
+                        lambda aid=aid: self.keyboard.root.after_cancel(aid)
+                    )
                 continue  # restart the dwell for the new index
 
             def _adv():
