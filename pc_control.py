@@ -24,7 +24,8 @@ def gui_to_controller(key):
 
     # Predictive-text key: send the suggested word then a space
     if action == Action.predict_word:
-        kb.type(label + " ")
+        if label:
+            kb.type(label + " ")
         return
 
     os_key = None
