@@ -1,13 +1,17 @@
 import json
-from kb_layout import Key, KeyboardRow, KeyboardPage, Keyboard
+from importlib import resources
+from .kb_layout import Key, KeyboardRow, KeyboardPage, Keyboard
 
-FOLDER = None
-FILE = 'layouts/pred_test.json'
+DEFAULT_LAYOUT = 'pred_test.json'
 
-def load_keyboard(path: str = FILE) -> Keyboard:
-    """Load a :class:`Keyboard` definition from ``path``."""
-    with open(path, 'r') as file:
-        blueprint = json.load(file)
+def load_keyboard(path: str | None = None) -> Keyboard:
+    """Load a :class:`Keyboard` definition from ``path`` or package data."""
+    if path:
+        with open(path, 'r') as file:
+            blueprint = json.load(file)
+    else:
+        with resources.files('myproject.resources.layouts').joinpath(DEFAULT_LAYOUT).open('r') as file:
+            blueprint = json.load(file)
 
     page_objects = []
     for page in blueprint['pages']:

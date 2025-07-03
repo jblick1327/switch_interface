@@ -1,7 +1,7 @@
 from typing import Optional
 
-from kb_gui import VirtualKeyboard
-from key_types import Action
+from .kb_gui import VirtualKeyboard
+from .key_types import Action
 
 
 class Scanner:
