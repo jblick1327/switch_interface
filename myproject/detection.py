@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import time
-import argparse
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
 
@@ -108,89 +107,30 @@ def listen(
         except KeyboardInterrupt:
             return
 
-def _detect_edges_loop(
-    block: np.ndarray,
-    state: EdgeState,
-    upper_threshold: float,
-    lower_threshold: float,
-    refractory_samples: int,
-) -> Tuple[EdgeState, bool]:
-    """Reference implementation using a Python loop (for benchmarking)."""
-
-    armed = state.armed
-    cooldown = state.cooldown
-    prev = state.prev_sample
-    pressed = False
-
-    for sample in block:
-        if armed:
-            if prev >= upper_threshold and sample <= lower_threshold:
-                pressed = True
-                armed = False
-                cooldown = refractory_samples
-        else:
-            cooldown -= 1
-            if cooldown <= 0:
-                armed = True
-        prev = sample
-
-    return EdgeState(armed=armed, cooldown=cooldown, prev_sample=prev), pressed
-
-
-def bench() -> None:
-    """Run a small benchmark comparing loop and vectorised versions."""
-
-    rng = np.random.default_rng(0)
-    block = rng.normal(scale=0.1, size=256).astype(np.float32)
-    iters = 10_000
-    refr = 1764
-    state = EdgeState(True, 0)
-
-    t0 = time.perf_counter()
-    for _ in range(iters):
-        state, _ = detect_edges(block, state, -0.2, -0.5, refr)
-    vec = time.perf_counter() - t0
-
-    state = EdgeState(True, 0)
-    t0 = time.perf_counter()
-    for _ in range(iters):
-        state, _ = _detect_edges_loop(block, state, -0.2, -0.5, refr)
-    loop = time.perf_counter() - t0
-
-    print(f"vectorised: {vec:.4f}s  loop: {loop:.4f}s  speed-up: {loop/vec:.1f}x")
-
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--bench", action="store_true", help="run benchmark")
-    args = parser.parse_args()
+    UPPER_THRESHOLD = -0.2
+    LOWER_THRESHOLD = -0.5   # current sample must drop below this
+    BLOCKSIZE = 256
+    DEBOUNCE_MS = 35
 
-    if args.bench:
-        bench()
-    else:
-        UPPER_THRESHOLD = -0.2
-        LOWER_THRESHOLD = -0.5   # current sample must drop below this
-        BLOCKSIZE = 256
-        DEBOUNCE_MS = 35
+    # if needed, consider adapting threshold based on proximity to previous switch,
+    # as multiple valid presses in succession will shift the upper and lower thresholds up slightly
 
-        # if needed, consider adapting threshold based on proximity to previous switch,
-        # as multiple valid presses in succession will shift the upper and lower thresholds up slightly
+    import datetime as _dt
 
-        import datetime as _dt
+    presscount = 0
 
-        presscount = 0
+    def _on_press() -> None:
+        global presscount
+        ts = _dt.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        presscount += 1
+        print(f"{ts}  PRESS. (count: {presscount})")
 
-        def _on_press() -> None:
-            global presscount
-            ts = _dt.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-            presscount += 1
-            print(f"{ts}  PRESS. (count: {presscount})")
-
-        print("Listening…  (Ctrl‑C to stop)")
-        listen(
-            _on_press,
-            upper_threshold=UPPER_THRESHOLD,
-            lower_threshold=LOWER_THRESHOLD,
-            blocksize=BLOCKSIZE,
-            debounce_ms=DEBOUNCE_MS,
-        )
+    print("Listening…  (Ctrl‑C to stop)")
+    listen(
+        _on_press,
+        upper_threshold=UPPER_THRESHOLD,
+        lower_threshold=LOWER_THRESHOLD,
+        blocksize=BLOCKSIZE,
+        debounce_ms=DEBOUNCE_MS,
+    )
