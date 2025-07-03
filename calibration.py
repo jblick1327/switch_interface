@@ -1,1 +1,1 @@
-#record user audio and iterate for debounce
+#record user audio and iterate for ideal parameters
