@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myproject"
+version = "0.1.0"
+authors = [{name = "test", email = "test@example.com"}]
+description = "Switch interface"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pynput",
+    "wordfreq",
+]
+
+[tool.setuptools.package-data]
+myproject = ["resources/**/*.json"]

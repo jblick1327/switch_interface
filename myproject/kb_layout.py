@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import List, Optional
-from key_types import Action
+from .key_types import Action
 
 
 @dataclass(frozen=True, slots=True)
