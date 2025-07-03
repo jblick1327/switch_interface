@@ -54,7 +54,8 @@ class VirtualKeyboard:
 
         send_key = key
         if action == Action.predict_word:
-            send_key = SimpleNamespace(label=label, action=action, mode=mode)
+            completion = label[len(self.current_word):] if label.startswith(self.current_word) else label
+            send_key = SimpleNamespace(label=completion, action=action, mode=mode)
         self.on_key(send_key)                    # hand to pc_control
 
         # update current word buffer
