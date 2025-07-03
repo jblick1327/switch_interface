@@ -1,10 +1,11 @@
 from pynput.keyboard import Key as OSKey, Controller
-from key_types import Action
+from .key_types import Action
+from .modifier_state import ModifierState
 
 kb = Controller()
 
-_latched: OSKey | None = None
-_toggles: set[OSKey] = set()
+# single source of truth for modifier state
+state = ModifierState()
 
 
 def _tap(k: OSKey | str):
@@ -13,7 +14,6 @@ def _tap(k: OSKey | str):
 
 
 def gui_to_controller(key):
-    global _latched, _toggles
 
     action = getattr(key, "action", None)
     mode = getattr(key, "mode", "tap")
@@ -34,24 +34,23 @@ def gui_to_controller(key):
 
     # Toggle modifiers (Caps Lock, etc.)
     if mode == "toggle" and os_key:
-        if os_key in _toggles:
-            kb.release(os_key)
-            _toggles.remove(os_key)
-        else:
+        active = state.toggle(os_key)
+        if active:
             kb.press(os_key)
-            _toggles.add(os_key)
+        else:
+            kb.release(os_key)
         return
 
-    # Latch modifiers (one‑shot Shift / Ctrl / Alt)
+    # Latch modifiers (one-shot Shift / Ctrl / Alt)
     if mode == "latch" and os_key:
-        if _latched == os_key:
-            kb.release(_latched)
-            _latched = None
+        prev = state._latched
+        state.latch(os_key)
+        if prev:
+            kb.release(prev)
+        if state._latched:
+            kb.press(state._latched)
         else:
-            if _latched:
-                kb.release(_latched)
-            kb.press(os_key)
-            _latched = os_key
+            kb.release(os_key)
         return
 
     # Normal tap; apply latched modifier once if present
@@ -61,10 +60,10 @@ def gui_to_controller(key):
         else:
             kb.type(str(label))
 
-    if _latched:
-        kb.press(_latched)
+    latched = state.consume_latch()
+    if latched:
+        kb.press(latched)
         send_payload()
-        kb.release(_latched)
-        _latched = None
+        kb.release(latched)
     else:
         send_payload()

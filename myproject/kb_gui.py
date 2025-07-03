@@ -1,19 +1,20 @@
 import tkinter as tk
-from kb_layout import Keyboard, Key
-from pc_control import gui_to_controller
-from key_types import Action
-from predictive import suggest
 from types import SimpleNamespace
+from typing import Callable
+
+from .kb_layout import Keyboard, Key
+
+from .key_types import Action
+from .predictive import suggest
+from .modifier_state import ModifierState
 
 class VirtualKeyboard:
     """Render a Keyboard as labels you can cycle through and ‘press’ programmatically."""
 
-    def __init__(self, keyboard: Keyboard, on_key: callable):
+    def __init__(self, keyboard: Keyboard, on_key: Callable, state: ModifierState):
         self.keyboard = keyboard
         self.on_key   = on_key
-
-        self.caps_on     = False
-        self.shift_armed = False
+        self.state    = state
 
         self.current_page   = 0
         self.highlight_index = 0
@@ -46,12 +47,6 @@ class VirtualKeyboard:
         action = getattr(key, "action", None)
         label  = widget.cget("text")
 
-        # update modifier state BEFORE sending to OS
-        if mode == "toggle" and action == "caps_lock":
-            self.caps_on = not self.caps_on
-        elif mode == "latch" and action == "shift":
-            self.shift_armed = not self.shift_armed
-
         send_key = key
         if action == Action.predict_word:
             completion = label[len(self.current_word):] if label.startswith(self.current_word) else label
@@ -72,9 +67,7 @@ class VirtualKeyboard:
 
         self._update_predictions()
 
-        # one-shot Shift ends right after the next tap key
-        if mode == "tap" and self.shift_armed:
-            self.shift_armed = False
+        # state.shift_armed updated automatically by OS layer
 
         self._refresh_letters()                  # letters + tints
         self._update_highlight()                 # keep yellow cursor
@@ -96,14 +89,14 @@ class VirtualKeyboard:
 
     # ───────── internal helpers ───────────────────────────────────────────
     def _bg_for_key(self, key: Key) -> str:
-        if key.mode == "toggle" and key.action == "caps_lock" and self.caps_on:
+        if key.mode == "toggle" and key.action == "caps_lock" and self.state.caps_on:
             return "#b0d4ff"                     # Caps tint
-        if key.mode == "latch"  and key.action == "shift"    and self.shift_armed:
+        if key.mode == "latch"  and key.action == "shift"    and self.state.shift_armed:
             return "#b0d4ff"                     # Shift tint
         return "white"
 
     def _refresh_letters(self):
-        upper = self.caps_on or self.shift_armed
+        upper = self.state.uppercase_active()
         for widget, k in self.key_widgets:
             # flip label
             if len(k.label) == 1 and k.label.isalpha():

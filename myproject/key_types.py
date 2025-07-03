@@ -1,4 +1,5 @@
 from enum import Enum, auto
+# ruff: noqa
 
 #Authoritative list of Actions. Any new key must be added here.
 class Action(str, Enum):
