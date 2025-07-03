@@ -22,6 +22,7 @@ class Scanner:
         self._thread: Optional[threading.Thread] = None
 
         self._reset_event = threading.Event()
+        self._after_id: Optional[str] = None
 
     def start(self) -> None:
         if self._running:
@@ -45,9 +46,19 @@ class Scanner:
             # Sleep, but wake early if _reset_event is set by on_press().
             if self._reset_event.wait(dwell):
                 self._reset_event.clear()
+                if self._after_id is not None:
+                    try:
+                        self.keyboard.root.after_cancel(self._after_id)
+                    except Exception:
+                        pass
+                    self._after_id = None
                 continue  # restart the dwell for the new index
 
-            self.keyboard.root.after(0, self.keyboard.advance_highlight)
+            def _adv():
+                self._after_id = None
+                self.keyboard.advance_highlight()
+
+            self._after_id = self.keyboard.root.after(0, _adv)
 
     def on_press(self) -> None:
         """Activate the currently highlighted key."""
