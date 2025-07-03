@@ -1,0 +1,22 @@
+{
+  "pages": [
+    {
+      "rows": [
+        {
+          "keys": [
+            {"label": "Play", "action": "media_play_pause"},
+            {"label": "Prev", "action": "media_previous"},
+            {"label": "Next", "action": "media_next"}
+          ]
+        },
+        {
+          "keys": [
+            {"label": "Vol+", "action": "media_volume_up"},
+            {"label": "Vol-", "action": "media_volume_down"},
+            {"label": "Mute", "action": "media_volume_mute"}
+          ]
+        }
+      ]
+    }
+  ]
+}
