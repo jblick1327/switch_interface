@@ -27,14 +27,33 @@ class VirtualKeyboard:
         self.root = tk.Tk()
         self.root.title("Virtual Keyboard")
         try:
-            self.root.overrideredirect(True)
+            # Keep the window floating above others but allow resizing and
+            # decoration so users can manipulate the window size.
             self.root.attributes("-topmost", True)
             self.root.attributes("-alpha", 0.93)
         except tk.TclError:
+            # Attributes may fail on some platforms (e.g. dummy Tk during tests).
             pass
+
+        self.root.resizable(True, True)
 
         self.page_frame = tk.Frame(self.root)
         self.page_frame.pack(padx=5, pady=5)
+
+        button_frame = tk.Frame(self.root)
+        button_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+
+        close_btn = tk.Button(button_frame, text="Close", command=self.root.destroy)
+        close_btn.pack(side=tk.RIGHT)
+
+        try:
+            from tkinter import ttk
+
+            ttk.Sizegrip(button_frame).pack(side=tk.RIGHT, padx=(0, 5))
+        except Exception:
+            # Sizegrip may not be available or may fail under headless tests.
+            pass
+
         self.render_page()
 
     # ───────── public control API ──────────────────────────────────────────
