@@ -72,3 +72,19 @@ def test_row_column_scanning_flow():
     assert kb.pressed == [3]
     assert scanner.phase == ScanPhase.ROW
     assert kb.highlight_row_index == 0
+
+
+def test_reset_after_press_starts_from_first_key():
+    kb = DummyKeyboard()
+    scanner = Scanner(kb, dwell=0.1)
+    scanner.start()
+    # advance once to highlight index 1
+    kb.root.scheduled.pop(0)()
+    assert kb.highlight_index == 1
+    # activate current key
+    scanner.on_press()
+    assert kb.pressed == [1]
+    assert kb.highlight_index == 0
+    # next tick should move to key 1
+    kb.root.scheduled.pop(0)()
+    assert kb.highlight_index == 1

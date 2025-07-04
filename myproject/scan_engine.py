@@ -40,10 +40,13 @@ class Scanner:
 
     def _tick(self) -> None:
         if not self.row_column_scan:
-            idx = self.keyboard.highlight_index
+            idx = self.key_cursor
+            self.keyboard.highlight_index = idx
             _, key = self.keyboard.key_widgets[idx]
             dwell_ms = int(self.dwell * 1000 * (key.dwell_mult or 1))
-            self.keyboard.advance_highlight()
+            next_idx = (idx + 1) % len(self.keyboard.key_widgets)
+            self.key_cursor = next_idx
+            self.keyboard._update_highlight()
             self._after_id = self.keyboard.root.after(dwell_ms, self._tick)
             return
 
@@ -111,6 +114,7 @@ class Scanner:
             _activate_highlighted()
             if self.reset_after_press:
                 self.keyboard.highlight_index = 0
+                self.key_cursor = 0
                 self.keyboard._update_highlight()
 
         if self._after_id is not None:
