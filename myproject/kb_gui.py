@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import font
 from types import SimpleNamespace
 from typing import Callable
 
@@ -38,13 +39,10 @@ class VirtualKeyboard:
         self.root.resizable(True, True)
 
         self.page_frame = tk.Frame(self.root)
-        self.page_frame.pack(padx=5, pady=5)
+        self.page_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         button_frame = tk.Frame(self.root)
         button_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
-
-        close_btn = tk.Button(button_frame, text="Close", command=self.root.destroy)
-        close_btn.pack(side=tk.RIGHT)
 
         try:
             from tkinter import ttk
@@ -54,7 +52,13 @@ class VirtualKeyboard:
             # Sizegrip may not be available or may fail under headless tests.
             pass
 
+        self.font = font.nametofont("TkDefaultFont").copy()
         self.render_page()
+        self.root.update_idletasks()
+        self.base_font_size = self.font.cget("size")
+        self.base_width = self.root.winfo_width()
+        self.base_height = self.root.winfo_height()
+        self.root.bind("<Configure>", self._on_resize)
 
     # ───────── public control API ──────────────────────────────────────────
     def advance_highlight(self):
@@ -163,29 +167,29 @@ class VirtualKeyboard:
 
         page = self.keyboard[self.current_page]
         max_len = max(len(r) for r in page)
-        base_width = 5
 
         index = 0
         for r_idx, row in enumerate(page):
             row_frame = tk.Frame(self.page_frame)
-            row_frame.pack(fill=tk.X)
+            row_frame.pack(fill=tk.BOTH, expand=True)
+            row_frame.grid_rowconfigure(0, weight=1)
             self.row_start_indices.append(index)
 
-            stretch = row.stretch and len(row) < max_len
-            width = int(base_width * max_len / len(row)) if stretch else base_width
+            stretch_ratio = max_len / len(row) if row.stretch and len(row) < max_len else 1
 
-            for key in row:
+            for c_idx, key in enumerate(row):
                 lbl = tk.Label(
                     row_frame,
                     text=key.label,
-                    width=width,
                     relief=tk.RAISED,
                     bd=2,
                     padx=2,
                     pady=2,
                     bg=self._bg_for_key(key),
+                    font=self.font,
                 )
-                lbl.pack(side=tk.LEFT, expand=stretch)
+                lbl.grid(row=0, column=c_idx, sticky="nsew")
+                row_frame.grid_columnconfigure(c_idx, weight=int(stretch_ratio * 100))
                 self.key_widgets.append((lbl, key))
                 self.row_indices.append(r_idx)
                 index += 1
@@ -206,6 +210,15 @@ class VirtualKeyboard:
             else:
                 bg = "yellow" if idx == self.highlight_index else self._bg_for_key(key)
             widget.config(bg=bg)
+
+    def _on_resize(self, event) -> None:
+        if event.widget is not self.root:
+            return
+        scale_w = event.width / self.base_width if self.base_width else 1
+        scale_h = event.height / self.base_height if self.base_height else 1
+        scale = min(scale_w, scale_h)
+        new_size = max(6, int(self.base_font_size * scale))
+        self.font.configure(size=new_size)
 
     # ---------- main loop ----------
     def run(self):
