@@ -46,7 +46,6 @@ class Keyboard(Sequence[KeyboardPage]):
         if not pages:
             raise ValueError("Keyboard must contain at least one page")
         self._pages = pages
-        self.current_page: int = 0
 
     def __len__(self) -> int:
         return len(self._pages)
