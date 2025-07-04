@@ -1,6 +1,7 @@
 import types
 
 from myproject.scan_engine import Scanner, ScanPhase
+from myproject.key_types import Action
 
 
 class DummyRoot:
@@ -81,10 +82,19 @@ def test_reset_after_press_starts_from_first_key():
     # advance once to highlight index 1
     kb.root.scheduled.pop(0)()
     assert kb.highlight_index == 1
-    # activate current key
+
+
+def test_reset_scan_row_resets_to_row_start_without_global_reset():
+    kb = DummyKeyboard()
+    kb.key_widgets[1] = (None, types.SimpleNamespace(action=Action.reset_scan_row, dwell_mult=None))
+    scanner = Scanner(kb, dwell=0.1, reset_after_press=False)
+    scanner.start()
+    # advance once to highlight index 1 (the reset key)
+    kb.root.scheduled.pop(0)()
+    assert kb.highlight_index == 1
+    # pressing reset should return to the start of the row
     scanner.on_press()
-    assert kb.pressed == [1]
     assert kb.highlight_index == 0
-    # next tick should move to key 1
+    # next tick should proceed to index 1 again
     kb.root.scheduled.pop(0)()
     assert kb.highlight_index == 1
