@@ -2,7 +2,8 @@
 
 from collections import Counter, defaultdict
 from functools import lru_cache
-from typing import Counter as CounterType, DefaultDict
+from typing import Counter as CounterType
+from typing import DefaultDict
 
 from wordfreq import top_n_list
 
@@ -34,6 +35,7 @@ for word in _WORDS:
 
 # ───────── public API ─────────────────────────────────────────────────────
 
+
 @lru_cache(maxsize=2048)
 def suggest_words(prefix: str, k: int = 3) -> list[str]:
     """Return up to ``k`` common words starting with ``prefix``."""
@@ -59,4 +61,4 @@ def suggest_letters(prefix: str, k: int = 3) -> list[str]:
             last1 = cleaned[-1]
             source = _BIGRAMS.get(last1, _START_LETTERS)
 
-    return [l for l, _ in source.most_common(k)]
+    return [letter for letter, _ in source.most_common(k)]
