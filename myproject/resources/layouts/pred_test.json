@@ -10,6 +10,13 @@
           ]
         },
         {
+          "stretch": true, "keys": [
+            {"label": "", "action": "predict_letter"},
+            {"label": "", "action": "predict_letter"},
+            {"label": "", "action": "predict_letter"}
+          ]
+        },
+        {
           "keys": [
             {"label": "a"}, {"label": "b"}, {"label": "c"}, {"label": "d"}, {"label": "e"}
           ]

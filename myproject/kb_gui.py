@@ -5,7 +5,7 @@ from typing import Callable
 from .kb_layout import Keyboard, Key
 
 from .key_types import Action
-from .predictive import suggest
+from .predictive import suggest_letters, suggest_words
 from .modifier_state import ModifierState
 
 class VirtualKeyboard:
@@ -51,11 +51,15 @@ class VirtualKeyboard:
         if action == Action.predict_word:
             completion = label[len(self.current_word):] if label.startswith(self.current_word) else label
             send_key = SimpleNamespace(label=completion, action=action, mode=mode)
+        elif action == Action.predict_letter:
+            send_key = SimpleNamespace(label=label, action=action, mode=mode)
         self.on_key(send_key)                    # hand to pc_control
 
         # update current word buffer
         if action == Action.predict_word:
             self.current_word = ""
+        elif action == Action.predict_letter and label:
+            self.current_word += label.lower()
         elif action == Action.backspace:
             self.current_word = self.current_word[:-1]
         elif len(label) == 1 and label.isalpha():
@@ -105,13 +109,20 @@ class VirtualKeyboard:
             widget.config(bg=self._bg_for_key(k))
 
     def _update_predictions(self):
-        words = suggest(self.current_word, 3)
-        idx = 0
+        words = suggest_words(self.current_word, 3)
+        letters = suggest_letters(self.current_word, 3)
+        word_idx = 0
+        letter_idx = 0
         for widget, k in self.key_widgets:
-            if getattr(k, "action", None) == Action.predict_word:
-                label = words[idx] if idx < len(words) else ""
+            act = getattr(k, "action", None)
+            if act == Action.predict_word:
+                label = words[word_idx] if word_idx < len(words) else ""
                 widget.config(text=label)
-                idx += 1
+                word_idx += 1
+            elif act == Action.predict_letter:
+                label = letters[letter_idx] if letter_idx < len(letters) else ""
+                widget.config(text=label)
+                letter_idx += 1
 
     def render_page(self):
         # clear out old widgets from the frame before rendering the new page
