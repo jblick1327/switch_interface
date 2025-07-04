@@ -2,7 +2,7 @@
 import argparse
 import os
 import threading
-from queue import SimpleQueue
+from queue import SimpleQueue, Empty
 
 from .kb_layout_io import load_keyboard
 from .kb_gui import VirtualKeyboard
@@ -27,7 +27,12 @@ def _on_switch():
     press_queue.put(None)
 
 def _pump_queue():
-    while not press_queue.empty():
+    while True:
+        try:
+            # Remove processed press events so they aren't handled repeatedly
+            press_queue.get_nowait()
+        except Empty:
+            break
         scanner.on_press()
     vk.root.after(10, _pump_queue)
 
