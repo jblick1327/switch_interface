@@ -1,0 +1,24 @@
+{
+  "pages": [
+    {
+      "rows": [
+        { "keys": [ {"label": "a"}, {"label": "b"}, {"label": "c"}, {"label": "d"}, {"label": "e"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "f"}, {"label": "g"}, {"label": "h"}, {"label": "i"}, {"label": "j"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "k"}, {"label": "l"}, {"label": "m"}, {"label": "n"}, {"label": "o"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "p"}, {"label": "q"}, {"label": "r"}, {"label": "s"}, {"label": "t"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "u"}, {"label": "v"}, {"label": "w"}, {"label": "x"}, {"label": "y"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "z"}, {"label": "Space", "action": "space"}, {"label": "Symbols", "action": "page_next"}, {"label": "Reset", "action": "reset_scan_row"} ] }
+      ]
+    },
+    {
+      "rows": [
+        { "keys": [ {"label": "1"}, {"label": "2"}, {"label": "3"}, {"label": "4"}, {"label": "5"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "6"}, {"label": "7"}, {"label": "8"}, {"label": "9"}, {"label": "0"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "."}, {"label": ","}, {"label": "?"}, {"label": "!"}, {"label": "'"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": ":"}, {"label": ";"}, {"label": "-"}, {"label": "_"}, {"label": "/"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "@"}, {"label": "#"}, {"label": "$"}, {"label": "%"}, {"label": "&"}, {"label": "Reset", "action": "reset_scan_row"} ] },
+        { "keys": [ {"label": "("}, {"label": ")"}, {"label": "["}, {"label": "]"}, {"label": "ABC", "action": "page_prev"}, {"label": "Reset", "action": "reset_scan_row"} ] }
+      ]
+    }
+  ]
+}
