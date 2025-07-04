@@ -7,12 +7,14 @@ from typing import Callable, Optional, Tuple
 
 import numpy as np
 
+
 @dataclass
 class EdgeState:
     armed: bool
     cooldown: int
     prev_sample: float = 0.0
-    bias: float = 0.0  
+    bias: float = 0.0
+
 
 def detect_edges(
     block: np.ndarray,
@@ -28,12 +30,12 @@ def detect_edges(
 
     if block.ndim != 1:
         raise ValueError("block must be a 1-D array")
-    
+
     if state.armed:
         # exponential moving average over the current block
-        state.bias = 0.995*state.bias + 0.005*float(block.mean())
+        state.bias = 0.995 * state.bias + 0.005 * float(block.mean())
 
-    dyn_upper = state.bias + upper_offset 
+    dyn_upper = state.bias + upper_offset
     dyn_lower = state.bias + lower_offset
 
     samples = np.concatenate(([state.prev_sample], block))
@@ -65,8 +67,15 @@ def detect_edges(
             cooldown = 0
             armed = True
 
-    return EdgeState(armed=armed, cooldown=cooldown, prev_sample=block[-1] 
-                     if len(block) else state.prev_sample, bias=state.bias), press_index is not None
+    return (
+        EdgeState(
+            armed=armed,
+            cooldown=cooldown,
+            prev_sample=block[-1] if len(block) else state.prev_sample,
+            bias=state.bias,
+        ),
+        press_index is not None,
+    )
 
 
 def listen(
@@ -80,6 +89,7 @@ def listen(
     device: Optional[int | str] = None,
 ) -> None:
     import sounddevice as sd
+
     if upper_offset <= lower_offset:
         raise ValueError("upper_offset must be > lower_offset (both negative values)")
 
@@ -115,14 +125,15 @@ def listen(
         except KeyboardInterrupt:
             return
 
+
 if __name__ == "__main__":
     upper_offset = -0.2
-    lower_offset = -0.5   # current sample must drop below this
+    lower_offset = -0.5  # current sample must drop below this
     BLOCKSIZE = 256
     DEBOUNCE_MS = 35
 
-    # if needed, consider adapting threshold based on proximity to previous switch,
-    # as multiple valid presses in succession will shift the upper and lower thresholds up slightly
+    # If needed, adapt threshold based on proximity to the previous switch. Multiple
+    # valid presses in succession shift the upper and lower thresholds up slightly.
 
     import datetime as _dt
 
