@@ -1,24 +1,41 @@
 # Switch Interface
 
-A minimal scanning keyboard interface designed for one-switch input. It highlights keys on a virtual keyboard, listens for press signals via microphone input, and sends the selected keys to the operating system. Predictive word and letter suggestions help speed up typing.
+Switch Interface is a lightweight scanning keyboard for one-switch input. It highlights keys on a virtual keyboard while listening to microphone input to detect switch presses. Predictive word and letter suggestions speed up typing.
 
-## Running
+## Requirements
 
-Install the package along with its dependencies and start the interface:
+- Python 3.11 or newer
+- Runtime dependencies (`pynput` and `wordfreq`) are installed automatically via `pip install -e .`.
+
+## Installation
 
 ```bash
 pip install -e .
+```
+
+## Usage
+
+Launch the interface with a keyboard layout JSON file:
+
+```bash
 switch-interface --layout myproject/resources/layouts/pred_test.json
 ```
 
-Use the `--layout` option to load a custom JSON layout. Example layouts are provided in `myproject/resources/layouts/`.
+The CLI also accepts optional flags:
+
+- `--dwell SECONDS` — how long each key remains highlighted (default: 0.6).
+- `--row-column` — use row/column scanning instead of linear scanning.
+
+### Layout files
+
+Layouts live in `myproject/resources/layouts/`. Each JSON file defines `pages` containing rows of `keys`. Keys can specify a label and an action. The `pred_test.json` layout includes special `predict_word` and `predict_letter` keys that pull suggestions from the built‑in predictive text engine.
+
+You can point `--layout` to any file in this format or set the `LAYOUT_PATH` environment variable.
 
 ## Testing
 
-The unit tests require the `wordfreq` package for predictive text features. Install it and run pytest:
+Run the unit tests after installing the project:
 
 ```bash
-pip install wordfreq
 pytest
 ```
-
