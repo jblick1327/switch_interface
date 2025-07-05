@@ -8,7 +8,7 @@ Install the package along with its dependencies and start the interface:
 
 ```bash
 pip install -e .
-python -m myproject --layout myproject/resources/layouts/pred_test.json
+switch-interface --layout myproject/resources/layouts/pred_test.json
 ```
 
 Use the `--layout` option to load a custom JSON layout. Example layouts are provided in `myproject/resources/layouts/`.
