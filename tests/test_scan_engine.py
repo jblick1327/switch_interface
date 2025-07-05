@@ -82,6 +82,9 @@ def test_reset_after_press_starts_from_first_key():
     # advance once to highlight index 1
     kb.root.scheduled.pop(0)()
     assert kb.highlight_index == 1
+    # pressing should reset the highlight back to the first key
+    scanner.on_press()
+    assert kb.highlight_index == 0
 
 
 def test_reset_scan_row_resets_to_row_start_without_global_reset():
