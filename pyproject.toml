@@ -14,5 +14,8 @@ dependencies = [
     "wordfreq",
 ]
 
+[project.scripts]
+switch-interface = "myproject.__main__:main"
+
 [tool.setuptools.package-data]
 myproject = ["resources/**/*.json"]

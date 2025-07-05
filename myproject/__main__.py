@@ -1,44 +1,66 @@
-#TEMPORARY entrance point for testing
+"""Command line entry point for the virtual keyboard interface."""
+
+from __future__ import annotations
+
 import argparse
 import os
 import threading
-from queue import SimpleQueue, Empty
+from queue import Empty, SimpleQueue
 
-from .kb_layout_io import load_keyboard
+from .detection import listen
 from .kb_gui import VirtualKeyboard
+from .kb_layout_io import load_keyboard
 from .pc_control import gui_to_controller, state
 from .scan_engine import Scanner
-from .detection import listen
 
-# ── Parse CLI options ----------------------------------------------------------------
-parser = argparse.ArgumentParser()
-parser.add_argument("--layout", dest="layout", default=os.getenv("LAYOUT_PATH"))
-args = parser.parse_args()
 
-vk = VirtualKeyboard(load_keyboard(args.layout), on_key=gui_to_controller, state=state)
-scanner = Scanner(vk, dwell=0.6)
-scanner.start()
+def main(argv: list[str] | None = None) -> None:
+    """Launch the scanning keyboard interface."""
+    parser = argparse.ArgumentParser(
+        description="Run the switch-accessible virtual keyboard",
+    )
+    parser.add_argument(
+        "--layout",
+        default=os.getenv("LAYOUT_PATH"),
+        help="Path to keyboard layout JSON",
+    )
+    parser.add_argument(
+        "--dwell",
+        type=float,
+        default=0.6,
+        help="Time in seconds each key remains highlighted",
+    )
+    parser.add_argument(
+        "--row-column",
+        action="store_true",
+        help="Use row/column scanning instead of simple linear scanning",
+    )
+    args = parser.parse_args(argv)
 
-press_queue: SimpleQueue[None] = SimpleQueue()
+    vk = VirtualKeyboard(
+        load_keyboard(args.layout), on_key=gui_to_controller, state=state
+    )
+    scanner = Scanner(vk, dwell=args.dwell, row_column_scan=args.row_column)
+    scanner.start()
 
-# ── Detection hook ─────────────────────────────────────────────────────────────
+    press_queue: SimpleQueue[None] = SimpleQueue()
 
-def _on_switch():
-    press_queue.put(None)
+    def _on_switch() -> None:
+        press_queue.put(None)
 
-def _pump_queue():
-    while True:
-        try:
-            # Remove processed press events so they aren't handled repeatedly
-            press_queue.get_nowait()
-        except Empty:
-            break
-        scanner.on_press()
+    def _pump_queue() -> None:
+        while True:
+            try:
+                press_queue.get_nowait()
+            except Empty:
+                break
+            scanner.on_press()
+        vk.root.after(10, _pump_queue)
+
+    threading.Thread(target=listen, args=(_on_switch,), daemon=True).start()
     vk.root.after(10, _pump_queue)
-
-threading.Thread(target=listen, args=(_on_switch,), daemon=True).start()
-vk.root.after(10, _pump_queue)
-
-# ── Main loop ───────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
     vk.run()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual entry point
+    main()
