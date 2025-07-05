@@ -5,6 +5,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
 
+from .audio.wasapi import get_extra_settings
+
 import numpy as np
 
 
@@ -111,19 +113,34 @@ def listen(
         if pressed:
             on_press()
 
-    with sd.InputStream(
+    extra = get_extra_settings()
+    stream_kwargs = dict(
         samplerate=samplerate,
         blocksize=blocksize,
         channels=1,
         dtype="float32",
         callback=_callback,
         device=device,
-    ):
-        try:
-            while True:
-                time.sleep(0.1)
-        except KeyboardInterrupt:
-            return
+    )
+    if extra is not None:
+        stream_kwargs["extra_settings"] = extra
+
+    def _run(kwargs):
+        with sd.InputStream(**kwargs):
+            try:
+                while True:
+                    time.sleep(0.1)
+            except KeyboardInterrupt:
+                return
+
+    try:
+        _run(stream_kwargs)
+    except sd.PortAudioError:
+        if extra is not None:
+            stream_kwargs.pop("extra_settings", None)
+            _run(stream_kwargs)
+        else:
+            raise
 
 
 if __name__ == "__main__":

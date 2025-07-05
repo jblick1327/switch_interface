@@ -26,6 +26,9 @@ The CLI also accepts optional flags:
 - `--dwell SECONDS` — how long each key remains highlighted (default: 0.6).
 - `--row-column` — use row/column scanning instead of linear scanning.
 
+On Windows the microphone is opened in WASAPI exclusive mode when possible. If
+exclusive access fails, the program falls back to the default shared mode.
+
 ### Layout files
 
 Layouts live in `myproject/resources/layouts/`. Each JSON file defines `pages` containing rows of `keys`. Keys can specify a label and an action. The `pred_test.json` layout includes special `predict_word` and `predict_letter` keys that pull suggestions from the built‑in predictive text engine.
