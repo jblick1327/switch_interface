@@ -1,7 +1,7 @@
 import types
 
-from myproject.scan_engine import Scanner, ScanPhase
-from myproject.key_types import Action
+from switch_interface.scan_engine import Scanner, ScanPhase
+from switch_interface.key_types import Action
 
 
 class DummyRoot:

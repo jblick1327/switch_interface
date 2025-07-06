@@ -5,7 +5,7 @@ from .modifier_state import ModifierState
 
 
 class PCController(KeyReceiver):
-    """Translate :class:`~myproject.kb_gui.Key` objects into OS key events."""
+    """Translate :class:`~switch_interface.kb_gui.Key` objects into OS key events."""
 
     def __init__(self, kb: Controller | None = None, state: ModifierState | None = None) -> None:
         self.kb = kb or Controller()
