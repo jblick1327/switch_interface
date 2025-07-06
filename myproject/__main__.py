@@ -10,7 +10,7 @@ from queue import Empty, SimpleQueue
 from .detection import listen
 from .kb_gui import VirtualKeyboard
 from .kb_layout_io import load_keyboard
-from .pc_control import gui_to_controller, state
+from .pc_control import PCController
 from .scan_engine import Scanner
 
 
@@ -37,8 +37,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    pc_controller = PCController()
     vk = VirtualKeyboard(
-        load_keyboard(args.layout), on_key=gui_to_controller, state=state
+        load_keyboard(args.layout), on_key=pc_controller.on_key, state=pc_controller.state
     )
     scanner = Scanner(vk, dwell=args.dwell, row_column_scan=args.row_column)
     scanner.start()
