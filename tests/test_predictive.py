@@ -1,4 +1,4 @@
-import myproject.predictive as predictive
+import switch_interface.predictive as predictive
 
 
 def test_letter_suggestion():

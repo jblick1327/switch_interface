@@ -18,7 +18,7 @@ pip install -e .
 Launch the interface with a keyboard layout JSON file:
 
 ```bash
-switch-interface --layout myproject/resources/layouts/pred_test.json
+switch-interface --layout switch_interface/resources/layouts/pred_test.json
 ```
 
 The CLI also accepts optional flags:
@@ -31,7 +31,7 @@ exclusive access fails, the program falls back to the default shared mode.
 
 ### Layout files
 
-Layouts live in `myproject/resources/layouts/`. Each JSON file defines `pages` containing rows of `keys`. Keys can specify a label and an action. The `pred_test.json` layout includes special `predict_word` and `predict_letter` keys that pull suggestions from the built‑in predictive text engine.
+Layouts live in `switch_interface/resources/layouts/`. Each JSON file defines `pages` containing rows of `keys`. Keys can specify a label and an action. The `pred_test.json` layout includes special `predict_word` and `predict_letter` keys that pull suggestions from the built‑in predictive text engine.
 
 You can point `--layout` to any file in this format or set the `LAYOUT_PATH` environment variable.
 

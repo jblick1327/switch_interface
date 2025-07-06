@@ -5,7 +5,7 @@ import types
 
 def _reload_with_dummy_sd(monkeypatch, sd_mod):
     monkeypatch.setitem(sys.modules, "sounddevice", sd_mod)
-    import myproject.audio.wasapi as wasapi
+    import switch_interface.audio.wasapi as wasapi
     importlib.reload(wasapi)
     return wasapi
 
@@ -63,7 +63,7 @@ def test_listen_retries_shared_mode(monkeypatch):
     )
 
     wasapi = _reload_with_dummy_sd(monkeypatch, sd_mod)
-    import myproject.detection as detection
+    import switch_interface.detection as detection
     importlib.reload(detection)
 
     monkeypatch.setattr(detection.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
