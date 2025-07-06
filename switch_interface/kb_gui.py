@@ -6,16 +6,23 @@ from typing import Callable
 from .kb_layout import Key, Keyboard
 from .key_types import Action
 from .modifier_state import ModifierState
-from .predictive import suggest_letters, suggest_words
+from .predictive import Predictor, default_predictor
 
 
 class VirtualKeyboard:
     """Render a Keyboard as labels you cycle through and press programmatically."""
 
-    def __init__(self, keyboard: Keyboard, on_key: Callable, state: ModifierState):
+    def __init__(
+        self,
+        keyboard: Keyboard,
+        on_key: Callable,
+        state: ModifierState,
+        predictor: Predictor | None = None,
+    ):
         self.keyboard = keyboard
         self.on_key = on_key
         self.state = state
+        self.predictor = predictor or default_predictor
 
         self.current_page = 0
         self.highlight_index = 0
@@ -142,8 +149,8 @@ class VirtualKeyboard:
             widget.config(bg=self._bg_for_key(k))
 
     def _update_predictions(self):
-        words = suggest_words(self.current_word, 3)
-        letters = suggest_letters(self.current_word, 3)
+        words = self.predictor.suggest_words(self.current_word, 3)
+        letters = self.predictor.suggest_letters(self.current_word, 3)
         word_idx = 0
         letter_idx = 0
         for widget, k in self.key_widgets:
