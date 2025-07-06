@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "myproject"
+name = "switch_interface"
 version = "0.1.0"
 authors = [{name = "test", email = "test@example.com"}]
 description = "Switch interface"
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-switch-interface = "myproject.__main__:main"
+switch-interface = "switch_interface.__main__:main"
 
 [tool.setuptools.package-data]
-myproject = ["resources/**/*.json"]
+switch_interface = ["resources/**/*.json"]

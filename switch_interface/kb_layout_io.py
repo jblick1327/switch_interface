@@ -10,7 +10,7 @@ def load_keyboard(path: str | None = None) -> Keyboard:
         with open(path, 'r') as file:
             blueprint = json.load(file)
     else:
-        with resources.files('myproject.resources.layouts').joinpath(DEFAULT_LAYOUT).open('r') as file:
+        with resources.files('switch_interface.resources.layouts').joinpath(DEFAULT_LAYOUT).open('r') as file:
             blueprint = json.load(file)
 
     page_objects = []

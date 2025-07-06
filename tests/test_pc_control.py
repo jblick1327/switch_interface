@@ -1,5 +1,5 @@
 import types
-from myproject.pc_control import PCController
+from switch_interface.pc_control import PCController
 from pynput.keyboard import Key as OSKey
 
 class DummyKB:
