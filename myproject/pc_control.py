@@ -1,9 +1,10 @@
 from pynput.keyboard import Key as OSKey, Controller
+from .interfaces import KeyReceiver
 from .key_types import Action
 from .modifier_state import ModifierState
 
 
-class PCController:
+class PCController(KeyReceiver):
     """Translate :class:`~myproject.kb_gui.Key` objects into OS key events."""
 
     def __init__(self, kb: Controller | None = None, state: ModifierState | None = None) -> None:
