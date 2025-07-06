@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from typing import Optional
 
-from .kb_gui import VirtualKeyboard
+from .interfaces import ScannableKeyboard
 from .key_types import Action
 
 
@@ -13,7 +13,7 @@ class ScanPhase(Enum):
 class Scanner:
     def __init__(
         self,
-        keyboard: VirtualKeyboard,
+        keyboard: ScannableKeyboard,
         dwell: float = 1.0,
         reset_after_press: bool = True,
         row_column_scan: bool = False,
