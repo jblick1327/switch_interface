@@ -1,6 +1,5 @@
 import types
-from myproject import pc_control
-from myproject.modifier_state import ModifierState
+from myproject.pc_control import PCController
 from pynput.keyboard import Key as OSKey
 
 class DummyKB:
@@ -13,18 +12,17 @@ class DummyKB:
     def type(self, t):
         self.events.append(("type", t))
 
-def test_shift_latch_sequence(monkeypatch):
+def test_shift_latch_sequence():
     kb = DummyKB()
-    monkeypatch.setattr(pc_control, "kb", kb)
-    pc_control.state = ModifierState()
+    controller = PCController(kb=kb)
 
     shift_key = types.SimpleNamespace(label="shift", action="shift", mode="latch")
     a_key = types.SimpleNamespace(label="a", action=None, mode="tap")
     b_key = types.SimpleNamespace(label="b", action=None, mode="tap")
 
-    pc_control.gui_to_controller(shift_key)
-    pc_control.gui_to_controller(a_key)
-    pc_control.gui_to_controller(b_key)
+    controller.on_key(shift_key)
+    controller.on_key(a_key)
+    controller.on_key(b_key)
 
     events = kb.events
     assert events[0] == ("press", OSKey.shift)
