@@ -11,9 +11,9 @@ def test_letter_suggestion():
 
 def test_ngram_thread_starts_on_demand(monkeypatch):
     importlib.reload(predictive)
-    assert predictive._THREAD is None
+    assert predictive.default_predictor.thread is None
 
     letters = predictive.suggest_letters("an")
     assert len(letters) > 0
-    assert predictive._THREAD is not None
+    assert predictive.default_predictor.thread is not None
 
