@@ -3,6 +3,11 @@ import json
 import os
 import tkinter as tk
 
+import numpy as np
+import sounddevice as sd
+
+from .audio.wasapi import get_extra_settings
+
 @dataclass
 class DetectorConfig:
     upper_offset: float = -0.2
@@ -44,6 +49,19 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     sr_var = tk.IntVar(master=root, value=config.samplerate)
     bs_var = tk.IntVar(master=root, value=config.blocksize)
     db_var = tk.IntVar(master=root, value=config.debounce_ms)
+
+    wave_canvas = tk.Canvas(root, width=500, height=150, bg="white")
+    wave_canvas.pack(padx=10, pady=5)
+
+    WIDTH = 500
+    HEIGHT = 150
+
+    def _draw_ruler() -> None:
+        for amp in (1, 0.5, 0, -0.5, -1):
+            y = HEIGHT / 2 - amp * (HEIGHT / 2)
+            wave_canvas.create_line(0, y, WIDTH, y, fill="#ccc", tags="ruler")
+
+    _draw_ruler()
 
     tk.Scale(
         root,
@@ -96,6 +114,75 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     ).pack(fill=tk.X, padx=10, pady=5)
 
     result: DetectorConfig | None = None
+    buf = np.zeros(sr_var.get() * 2, dtype=np.float32)
+    buf_index = 0
+    stream: sd.InputStream | None = None
+
+    def _stop_stream() -> None:
+        nonlocal stream
+        if stream is not None:
+            try:
+                stream.stop()
+            finally:
+                stream.close()
+            stream = None
+
+    def _callback(indata: np.ndarray, frames: int, time: int, status: int) -> None:
+        nonlocal buf_index
+        mono = indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0]
+        n = len(mono)
+        if n > len(buf):
+            mono = mono[-len(buf) :]
+            n = len(buf)
+        end = buf_index + n
+        if end <= len(buf):
+            buf[buf_index:end] = mono
+        else:
+            first = len(buf) - buf_index
+            buf[buf_index:] = mono[:first]
+            buf[: n - first] = mono[first:]
+        buf_index = (buf_index + n) % len(buf)
+
+    def _start_stream() -> None:
+        nonlocal stream
+        extra = get_extra_settings()
+        kwargs = dict(
+            samplerate=sr_var.get(),
+            blocksize=bs_var.get(),
+            channels=1,
+            dtype="float32",
+            callback=_callback,
+        )
+        if extra is not None:
+            kwargs["extra_settings"] = extra
+        try:
+            stream = sd.InputStream(**kwargs)
+        except sd.PortAudioError as exc:
+            if extra is not None:
+                kwargs.pop("extra_settings", None)
+                try:
+                    stream = sd.InputStream(**kwargs)
+                except sd.PortAudioError as exc2:
+                    raise RuntimeError(
+                        "Failed to open audio input device"
+                    ) from exc2
+            else:
+                raise RuntimeError(
+                    "Failed to open audio input device"
+                ) from exc
+        stream.start()
+
+    def _update_wave() -> None:
+        wave_canvas.delete("all")
+        _draw_ruler()
+        data = np.concatenate([buf[buf_index:], buf[:buf_index]])
+        points: list[float] = []
+        for i, sample in enumerate(data):
+            x = i * WIDTH / len(data)
+            y = HEIGHT / 2 - sample * (HEIGHT / 2)
+            points.extend([x, y])
+        wave_canvas.create_line(*points, fill="blue", tags="wave")
+        root.after(30, _update_wave)
 
     def _start() -> None:
         nonlocal result
@@ -106,9 +193,19 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             blocksize=bs_var.get(),
             debounce_ms=db_var.get(),
         )
+        _stop_stream()
         root.destroy()
 
     tk.Button(root, text="Start", command=_start).pack(pady=10)
+
+    def _on_close() -> None:
+        _stop_stream()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", _on_close)
+
+    _start_stream()
+    _update_wave()
     root.mainloop()
 
     assert result is not None
