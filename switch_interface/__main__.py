@@ -9,7 +9,7 @@ from queue import Empty, SimpleQueue
 
 import json
 from .detection import listen
-from .calibration import calibrate, DetectorConfig
+from .calibration import calibrate, DetectorConfig, load_config, save_config
 from .kb_gui import VirtualKeyboard
 from .kb_layout_io import load_keyboard
 from .pc_control import PCController
@@ -59,7 +59,10 @@ def main(argv: list[str] | None = None) -> None:
     scanner = Scanner(vk, dwell=args.dwell, row_column_scan=args.row_column)
     scanner.start()
 
-    cfg = calibrate() if args.calibrate else DetectorConfig()
+    cfg = load_config()
+    if args.calibrate:
+        cfg = calibrate(cfg)
+        save_config(cfg)
 
     press_queue: SimpleQueue[None] = SimpleQueue()
 
