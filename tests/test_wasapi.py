@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+import pytest
 
 
 def _reload_with_dummy_sd(monkeypatch, sd_mod):
@@ -73,3 +74,37 @@ def test_listen_retries_shared_mode(monkeypatch):
     assert len(calls) == 2
     assert "extra_settings" in calls[0]
     assert "extra_settings" not in calls[1]
+
+
+def test_listen_raises_runtime_error(monkeypatch):
+    calls = []
+
+    class DummySettings:
+        def __init__(self, exclusive=True):
+            self.exclusive = exclusive
+
+    class PortAudioError(Exception):
+        pass
+
+    def InputStream(**kwargs):
+        calls.append(kwargs)
+        raise PortAudioError("fail")
+
+    sd_mod = types.SimpleNamespace(
+        WasapiSettings=DummySettings,
+        PortAudioError=PortAudioError,
+        InputStream=InputStream,
+        query_hostapis=lambda idx: {"name": "Windows WASAPI"},
+        default=types.SimpleNamespace(hostapi=0),
+    )
+
+    wasapi = _reload_with_dummy_sd(monkeypatch, sd_mod)
+    import switch_interface.detection as detection
+    importlib.reload(detection)
+
+    monkeypatch.setattr(detection.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
+
+    with pytest.raises(RuntimeError):
+        detection.listen(lambda: None, samplerate=1, blocksize=1)
+
+    assert len(calls) == 2
