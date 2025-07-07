@@ -135,12 +135,19 @@ def listen(
 
     try:
         _run(stream_kwargs)
-    except sd.PortAudioError:
+    except sd.PortAudioError as exc:
         if extra is not None:
             stream_kwargs.pop("extra_settings", None)
-            _run(stream_kwargs)
+            try:
+                _run(stream_kwargs)
+            except sd.PortAudioError as exc2:
+                raise RuntimeError(
+                    "Failed to open audio input device"
+                ) from exc2
         else:
-            raise
+            raise RuntimeError(
+                "Failed to open audio input device"
+            ) from exc
 
 
 if __name__ == "__main__":
