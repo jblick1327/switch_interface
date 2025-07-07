@@ -41,16 +41,36 @@ def _setup_dummy_tk(monkeypatch):
             if self.command:
                 self.command()
 
+    class DummyLabel:
+        def __init__(self, master=None, text=None):
+            self.master = master
+        def pack(self, *args, **kwargs):
+            pass
+
+    class DummyOptionMenu:
+        def __init__(self, master=None, var=None, *values):
+            self.master = master
+        def pack(self, *args, **kwargs):
+            pass
+
     class DummyTk:
         instance = None
         def __init__(self):
             DummyTk.instance = self
+            self._bg = "default"
         def title(self, title):
             self.title = title
         def protocol(self, name, cb):
             self.cb = cb
         def after(self, ms, func):
             return 'id'
+        def configure(self, **kwargs):
+            if "bg" in kwargs:
+                self._bg = kwargs["bg"]
+        def cget(self, key):
+            if key == "bg":
+                return self._bg
+            raise KeyError(key)
         def mainloop(self):
             if hasattr(self, 'button'):
                 self.button.invoke()
@@ -62,7 +82,10 @@ def _setup_dummy_tk(monkeypatch):
         Canvas=DummyCanvas,
         Scale=DummyScale,
         Button=DummyButton,
+        Label=DummyLabel,
+        OptionMenu=DummyOptionMenu,
         DoubleVar=DummyVar,
+        StringVar=DummyVar,
         IntVar=DummyVar,
         HORIZONTAL='horizontal',
         X='x',
@@ -87,6 +110,10 @@ def _setup_dummy_sd(monkeypatch):
     sd_mod = types.SimpleNamespace(
         InputStream=lambda **kw: DummyStream(**kw),
         PortAudioError=Exception,
+        query_devices=lambda: [
+            {"name": "Mic1", "max_input_channels": 1},
+            {"name": "Mic2", "max_input_channels": 1},
+        ],
     )
     monkeypatch.setitem(sys.modules, 'sounddevice', sd_mod)
     return calls

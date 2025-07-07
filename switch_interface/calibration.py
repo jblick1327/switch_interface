@@ -6,8 +6,10 @@ from tkinter import messagebox
 
 import numpy as np
 import sounddevice as sd
+import math
 
 from .audio.wasapi import get_extra_settings
+from .detection import detect_edges, EdgeState
 
 @dataclass
 class DetectorConfig:
@@ -16,6 +18,7 @@ class DetectorConfig:
     samplerate: int = 44_100
     blocksize: int = 256
     debounce_ms: int = 40
+    device: str | None = None
 
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".switch_interface")
@@ -50,6 +53,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     sr_var = tk.IntVar(master=root, value=config.samplerate)
     bs_var = tk.IntVar(master=root, value=config.blocksize)
     db_var = tk.IntVar(master=root, value=config.debounce_ms)
+    dev_var = tk.StringVar(master=root, value=config.device or "")
 
     wave_canvas = tk.Canvas(root, width=500, height=150, bg="white")
     wave_canvas.pack(padx=10, pady=5)
@@ -114,11 +118,20 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         orient=tk.HORIZONTAL,
     ).pack(fill=tk.X, padx=10, pady=5)
 
+    devices = [d for d in sd.query_devices() if d.get("max_input_channels", 0) > 0]
+    if devices and not dev_var.get():
+        dev_var.set(devices[0]["name"])
+    tk.Label(root, text="Microphone").pack(padx=10, pady=(10, 0))
+    tk.OptionMenu(root, dev_var, *[d["name"] for d in devices]).pack(fill=tk.X, padx=10)
+
     result: DetectorConfig | None = None
     buf = np.zeros(sr_var.get() * 2, dtype=np.float32)
     buf_index = 0
     bias = 0.0
     stream: sd.InputStream | None = None
+    edge_state = EdgeState(armed=True, cooldown=0)
+    press_pending = False
+    normal_bg = root.cget("bg")
 
     def _stop_stream() -> None:
         nonlocal stream
@@ -130,7 +143,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             stream = None
 
     def _callback(indata: np.ndarray, frames: int, time: int, status: int) -> None:
-        nonlocal buf_index
+        nonlocal buf_index, edge_state, press_pending
         mono = indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0]
         n = len(mono)
         if n > len(buf):
@@ -144,6 +157,16 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             buf[buf_index:] = mono[:first]
             buf[: n - first] = mono[first:]
         buf_index = (buf_index + n) % len(buf)
+        refract = int(math.ceil((db_var.get() / 1000) * sr_var.get()))
+        edge_state, pressed = detect_edges(
+            mono,
+            edge_state,
+            u_var.get(),
+            l_var.get(),
+            refract,
+        )
+        if pressed:
+            press_pending = True
 
     def _start_stream() -> None:
         nonlocal stream
@@ -154,6 +177,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             channels=1,
             dtype="float32",
             callback=_callback,
+            device=dev_var.get() or None,
         )
         if extra is not None:
             kwargs["extra_settings"] = extra
@@ -193,6 +217,11 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         y_lower = HEIGHT / 2 - lower * (HEIGHT / 2)
         wave_canvas.create_line(0, y_upper, WIDTH, y_upper, fill="red", tags="thr")
         wave_canvas.create_line(0, y_lower, WIDTH, y_lower, fill="red", tags="thr")
+        nonlocal press_pending
+        if press_pending:
+            root.configure(bg="yellow")
+            root.after(150, lambda: root.configure(bg=normal_bg))
+            press_pending = False
         root.after(30, _update_wave)
 
     def _start() -> None:
@@ -203,6 +232,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             samplerate=sr_var.get(),
             blocksize=bs_var.get(),
             debounce_ms=db_var.get(),
+            device=dev_var.get() or None,
         )
         _stop_stream()
         root.destroy()

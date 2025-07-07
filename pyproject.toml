@@ -15,8 +15,8 @@ dependencies = [
 ]
 
 [project.scripts]
-switch-interface = "switch_interface.__main__:main"
-switch-interface-gui = "switch_interface.launcher:main"
+switch-interface = "switch_interface.launcher:main"
+switch-interface-cli = "switch_interface.__main__:main"
 
 [tool.setuptools.package-data]
 switch_interface = ["resources/**/*.json"]
