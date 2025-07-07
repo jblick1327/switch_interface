@@ -21,6 +21,12 @@ Launch the interface with a keyboard layout JSON file:
 switch-interface --layout switch_interface/resources/layouts/pred_test.json
 ```
 
+You can also launch a small graphical window to choose these options interactively:
+
+```bash
+switch-interface-gui
+```
+
 The CLI also accepts optional flags:
 
 - `--dwell SECONDS` — how long each key remains highlighted (default: 0.6).
