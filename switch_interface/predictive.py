@@ -86,7 +86,6 @@ class Predictor:
         p = prefix.lower()
         return [w for w in self.words if w.startswith(p)][:k]
 
-    @lru_cache(maxsize=2048)
     def suggest_letters(self, prefix: str, k: int = 3) -> list[str]:
         """Suggest up to ``k`` likely next letters for ``prefix``."""
         self._ensure_thread()
@@ -94,6 +93,12 @@ class Predictor:
         if not self.ready:
             return self._fallback_letters(prefix, k)
 
+        return self._suggest_letters_cached(prefix, k)
+
+    @lru_cache(maxsize=2048)
+    def _suggest_letters_cached(self, prefix: str, k: int = 3) -> list[str]:
+        """Cached implementation for suggesting letters once data is ready."""
+        # ``_ensure_thread`` and readiness checks happen in ``suggest_letters``.
         cleaned = "".join(c for c in prefix.lower() if c.isalpha())
         if not cleaned:
             assert self.start_letters is not None
@@ -106,7 +111,6 @@ class Predictor:
                 last1 = cleaned[-1]
                 assert self.bigrams is not None and self.start_letters is not None
                 source = self.bigrams.get(last1, self.start_letters)
-
         return [letter for letter, _ in source.most_common(k)]
 
 
