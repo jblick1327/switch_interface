@@ -8,7 +8,7 @@ import threading
 from queue import Empty, SimpleQueue
 
 import json
-from .detection import listen
+from .detection import listen, check_device
 from .calibration import calibrate, DetectorConfig, load_config, save_config
 from .kb_gui import VirtualKeyboard
 from .kb_layout_io import load_keyboard
@@ -49,6 +49,15 @@ def main(argv: list[str] | None = None) -> None:
         cfg = calibrate(cfg)
         save_config(cfg)
 
+    try:
+        check_device(
+            samplerate=cfg.samplerate,
+            blocksize=cfg.blocksize,
+            device=cfg.device,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError("Could not open audio input device") from exc
+
     pc_controller = PCController()
     try:
         keyboard = load_keyboard(args.layout)
@@ -88,6 +97,7 @@ def main(argv: list[str] | None = None) -> None:
             samplerate=cfg.samplerate,
             blocksize=cfg.blocksize,
             debounce_ms=cfg.debounce_ms,
+            device=cfg.device,
         ),
     ).start()
     vk.root.after(10, _pump_queue)

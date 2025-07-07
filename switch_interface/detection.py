@@ -80,6 +80,40 @@ def detect_edges(
     )
 
 
+def check_device(
+    *,
+    samplerate: int = 44_100,
+    blocksize: int = 256,
+    device: Optional[int | str] = None,
+) -> None:
+    """Raise ``RuntimeError`` if the input device can't be opened."""
+    import sounddevice as sd
+
+    extra = get_extra_settings()
+    kwargs = dict(
+        samplerate=samplerate,
+        blocksize=blocksize,
+        channels=1,
+        dtype="float32",
+        device=device,
+    )
+    if extra is not None:
+        kwargs["extra_settings"] = extra
+    try:
+        with sd.InputStream(callback=lambda *a: None, **kwargs):
+            pass
+    except sd.PortAudioError as exc:
+        if extra is not None:
+            kwargs.pop("extra_settings", None)
+            try:
+                with sd.InputStream(callback=lambda *a: None, **kwargs):
+                    pass
+            except sd.PortAudioError as exc2:
+                raise RuntimeError("Failed to open audio input device") from exc2
+        else:
+            raise RuntimeError("Failed to open audio input device") from exc
+
+
 def listen(
     on_press: Callable[[], None],
     *,

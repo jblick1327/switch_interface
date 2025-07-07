@@ -15,22 +15,25 @@ pip install -e .
 
 ## Usage
 
-Launch the interface with a keyboard layout JSON file:
+Launch the graphical interface:
 
 ```bash
-switch-interface --layout switch_interface/resources/layouts/pred_test.json
+switch-interface
 ```
 
-You can also launch a small graphical window to choose these options interactively:
+Command line usage is still available via:
 
 ```bash
-switch-interface-gui
+switch-interface-cli --layout switch_interface/resources/layouts/pred_test.json
 ```
 
 The CLI also accepts optional flags:
 
 - `--dwell SECONDS` — how long each key remains highlighted (default: 0.6).
 - `--row-column` — use row/column scanning instead of linear scanning.
+
+If no microphone is detected when launching the GUI, an error will direct you to
+the calibration menu where you can choose an input device from a dropdown.
 
 On Windows the microphone is opened in WASAPI exclusive mode when possible. If
 exclusive access fails, the program falls back to the default shared mode.
