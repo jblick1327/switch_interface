@@ -3,6 +3,4 @@ __pycache__/
 
 .venv/
 
-at_switch_sim.py
-
 update.patch
