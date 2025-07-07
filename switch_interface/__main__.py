@@ -44,6 +44,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    cfg = load_config()
+    if args.calibrate:
+        cfg = calibrate(cfg)
+        save_config(cfg)
+
     pc_controller = PCController()
     try:
         keyboard = load_keyboard(args.layout)
@@ -55,14 +60,9 @@ def main(argv: list[str] | None = None) -> None:
     vk = VirtualKeyboard(
         keyboard, on_key=pc_controller.on_key, state=pc_controller.state
         )
-    
+
     scanner = Scanner(vk, dwell=args.dwell, row_column_scan=args.row_column)
     scanner.start()
-
-    cfg = load_config()
-    if args.calibrate:
-        cfg = calibrate(cfg)
-        save_config(cfg)
 
     press_queue: SimpleQueue[None] = SimpleQueue()
 
