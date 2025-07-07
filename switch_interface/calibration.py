@@ -116,6 +116,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     result: DetectorConfig | None = None
     buf = np.zeros(sr_var.get() * 2, dtype=np.float32)
     buf_index = 0
+    bias = 0.0
     stream: sd.InputStream | None = None
 
     def _stop_stream() -> None:
@@ -176,12 +177,21 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         wave_canvas.delete("all")
         _draw_ruler()
         data = np.concatenate([buf[buf_index:], buf[:buf_index]])
+        nonlocal bias
+        bias = 0.995 * bias + 0.005 * float(data.mean())
         points: list[float] = []
         for i, sample in enumerate(data):
             x = i * WIDTH / len(data)
             y = HEIGHT / 2 - sample * (HEIGHT / 2)
             points.extend([x, y])
         wave_canvas.create_line(*points, fill="blue", tags="wave")
+        # dynamic threshold lines
+        upper = bias + u_var.get()
+        lower = bias + l_var.get()
+        y_upper = HEIGHT / 2 - upper * (HEIGHT / 2)
+        y_lower = HEIGHT / 2 - lower * (HEIGHT / 2)
+        wave_canvas.create_line(0, y_upper, WIDTH, y_upper, fill="red", tags="thr")
+        wave_canvas.create_line(0, y_lower, WIDTH, y_lower, fill="red", tags="thr")
         root.after(30, _update_wave)
 
     def _start() -> None:
