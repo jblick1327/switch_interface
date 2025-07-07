@@ -26,7 +26,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         root,
         variable=u_var,
         from_=-1.0,
-        to=0.0,
+        to=1.0,
         resolution=0.01,
         label="Upper offset",
         orient=tk.HORIZONTAL,
@@ -45,7 +45,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     tk.Scale(
         root,
         variable=sr_var,
-        from_=8_000,
+        from_=100,
         to=96_000,
         resolution=1_000,
         label="Sample rate",
