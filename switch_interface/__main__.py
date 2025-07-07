@@ -7,6 +7,7 @@ import os
 import threading
 from queue import Empty, SimpleQueue
 
+import json
 from .detection import listen
 from .kb_gui import VirtualKeyboard
 from .kb_layout_io import load_keyboard
@@ -38,9 +39,17 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     pc_controller = PCController()
+    try:
+        keyboard = load_keyboard(args.layout)
+    except FileNotFoundError:
+        parser.error(f"Layout file '{args.layout}' not found")
+    except json.JSONDecodeError as exc:
+        parser.error(f"Invalid JSON in layout file '{args.layout}': {exc.msg}")
+
     vk = VirtualKeyboard(
-        load_keyboard(args.layout), on_key=pc_controller.on_key, state=pc_controller.state
-    )
+        keyboard, on_key=pc_controller.on_key, state=pc_controller.state
+        )
+    
     scanner = Scanner(vk, dwell=args.dwell, row_column_scan=args.row_column)
     scanner.start()
 

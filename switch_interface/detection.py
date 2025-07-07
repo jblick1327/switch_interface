@@ -31,7 +31,7 @@ def detect_edges(
     """
 
     if block.ndim != 1:
-        raise ValueError("block must be a 1-D array")
+        raise ValueError(f"block must be a 1-D array (got shape {block.shape})")
 
     if state.armed:
         # exponential moving average over the current block
