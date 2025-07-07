@@ -66,6 +66,7 @@ def _setup_dummy_tk(monkeypatch):
         IntVar=DummyVar,
         HORIZONTAL='horizontal',
         X='x',
+        messagebox=types.SimpleNamespace(showerror=lambda *a, **k: None),
     )
     monkeypatch.setitem(sys.modules, 'tkinter', tk_mod)
     return DummyTk
