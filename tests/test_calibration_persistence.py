@@ -1,3 +1,8 @@
+import sys
+from types import SimpleNamespace
+
+sys.modules.setdefault("sounddevice", SimpleNamespace())
+
 from switch_interface.calibration import DetectorConfig, save_config, load_config
 
 
