@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+import json
+import os
 import tkinter as tk
 
 @dataclass
@@ -8,6 +10,27 @@ class DetectorConfig:
     samplerate: int = 44_100
     blocksize: int = 256
     debounce_ms: int = 40
+
+
+CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".switch_interface")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "detector.json")
+
+
+def load_config(path: str = CONFIG_FILE) -> "DetectorConfig":
+    """Return saved detector settings or defaults if unavailable."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return DetectorConfig(**data)
+    except Exception:
+        return DetectorConfig()
+
+
+def save_config(config: "DetectorConfig", path: str = CONFIG_FILE) -> None:
+    """Persist ``config`` to ``path`` in JSON format."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(asdict(config), f)
 
 
 def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
