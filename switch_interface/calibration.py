@@ -2,6 +2,7 @@ from dataclasses import dataclass, asdict
 import json
 import os
 import tkinter as tk
+from tkinter import messagebox
 
 import numpy as np
 import sounddevice as sd
@@ -214,7 +215,18 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
 
     root.protocol("WM_DELETE_WINDOW", _on_close)
 
-    _start_stream()
+    try:
+        _start_stream()
+    except RuntimeError:
+        root.withdraw()
+        messagebox.showerror(
+            "Error",
+            "Could not read switch",
+            parent=root,
+        )
+        root.destroy()
+        return config
+    
     _update_wave()
     root.mainloop()
 
