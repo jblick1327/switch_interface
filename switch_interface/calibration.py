@@ -16,11 +16,11 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     root = tk.Tk()
     root.title("Calibrate Detector")
 
-    u_var = tk.DoubleVar(value=config.upper_offset)
-    l_var = tk.DoubleVar(value=config.lower_offset)
-    sr_var = tk.IntVar(value=config.samplerate)
-    bs_var = tk.IntVar(value=config.blocksize)
-    db_var = tk.IntVar(value=config.debounce_ms)
+    u_var = tk.DoubleVar(master=root, value=config.upper_offset)
+    l_var = tk.DoubleVar(master=root, value=config.lower_offset)
+    sr_var = tk.IntVar(master=root, value=config.samplerate)
+    bs_var = tk.IntVar(master=root, value=config.blocksize)
+    db_var = tk.IntVar(master=root, value=config.debounce_ms)
 
     tk.Scale(
         root,
