@@ -8,6 +8,7 @@ import threading
 from queue import Empty, SimpleQueue
 
 from .detection import listen
+from .calibration import calibrate, DetectorConfig
 from .kb_gui import VirtualKeyboard
 from .kb_layout_io import load_keyboard
 from .pc_control import PCController
@@ -35,6 +36,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Use row/column scanning instead of simple linear scanning",
     )
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Show calibration sliders before launching",
+    )
     args = parser.parse_args(argv)
 
     pc_controller = PCController()
@@ -43,6 +49,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     scanner = Scanner(vk, dwell=args.dwell, row_column_scan=args.row_column)
     scanner.start()
+
+    cfg = calibrate() if args.calibrate else DetectorConfig()
 
     press_queue: SimpleQueue[None] = SimpleQueue()
 
@@ -58,7 +66,18 @@ def main(argv: list[str] | None = None) -> None:
             scanner.on_press()
         vk.root.after(10, _pump_queue)
 
-    threading.Thread(target=listen, args=(_on_switch,), daemon=True).start()
+    threading.Thread(
+        target=listen,
+        args=(_on_switch,),
+        daemon=True,
+        kwargs=dict(
+            upper_offset=cfg.upper_offset,
+            lower_offset=cfg.lower_offset,
+            samplerate=cfg.samplerate,
+            blocksize=cfg.blocksize,
+            debounce_ms=cfg.debounce_ms,
+        ),
+    ).start()
     vk.root.after(10, _pump_queue)
     vk.run()
 
