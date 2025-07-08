@@ -62,8 +62,8 @@ def _discover_backends() -> None:
         module_name = f"{__package__}.backends.{file.stem}"
         try:
             mod: ModuleType = importlib.import_module(module_name)
-        except ModuleNotFoundError as mnf:
-            log.debug("Backend %s skipped (%s)", module_name, mnf)
+        except Exception as exc:
+            log.debug("Backend %s skipped (%s)", module_name, exc)
             continue
 
         for name, cls in inspect.getmembers(mod, inspect.isclass):
@@ -150,4 +150,5 @@ def rescan_backends() -> None:
     global _BACKENDS_LOADED
     _BACKENDS_LOADED = False
     _BACKENDS.clear()
-    _discover_backends()    log.debug("Re-scanning backends")
+    _discover_backends()    
+    log.debug("Re-scanning backends")
