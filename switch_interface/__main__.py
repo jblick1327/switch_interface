@@ -89,16 +89,8 @@ def main(argv: list[str] | None = None) -> None:
 
     threading.Thread(
         target=listen,
-        args=(_on_switch,),
+        args=(_on_switch, cfg),
         daemon=True,
-        kwargs=dict(
-            upper_offset=cfg.upper_offset,
-            lower_offset=cfg.lower_offset,
-            samplerate=cfg.samplerate,
-            blocksize=cfg.blocksize,
-            debounce_ms=cfg.debounce_ms,
-            device=cfg.device,
-        ),
     ).start()
     vk.root.after(10, _pump_queue)
     vk.run()

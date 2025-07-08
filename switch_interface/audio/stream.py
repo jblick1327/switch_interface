@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import abc
 import contextlib
 import importlib
-import logging
 import inspect
+import logging
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Iterator, Optional, Any, Dict
+from typing import Any, Callable, Iterator, Optional
 
 import sounddevice as sd
 
@@ -14,10 +15,36 @@ log = logging.getLogger(__name__)
 
 __all__ = ["open_input", "rescan_backends"]
 
-class InputBackend:
-    pass
 
-_BACKENDS: list[InputBackend] = [] 
+class InputBackend(abc.ABC):
+    """Abstract base class for audio input back-ends."""
+
+    #: Higher priority back-ends are preferred when multiple match.
+    priority: int = 0
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(priority={self.priority})"
+
+    @abc.abstractmethod
+    def matches_hostapi(self, hostapi_info: dict[str, Any]) -> bool:
+        """Return ``True`` if this backend supports ``hostapi_info``."""
+
+    @contextlib.contextmanager
+    @abc.abstractmethod
+    def open(
+        self,
+        *,
+        samplerate: int,
+        blocksize: int,
+        channels: int,
+        dtype: str,
+        device: int | str | None,
+        callback: Callable[..., None],
+        **extra_kwargs: Any,
+    ) -> Iterator[sd.InputStream]:
+        """Yield a started :class:`sounddevice.InputStream`."""
+
+_BACKENDS: list[InputBackend] = []
 _BACKENDS_LOADED = False
 
 def _discover_backends() -> None:
@@ -25,6 +52,8 @@ def _discover_backends() -> None:
     global _BACKENDS_LOADED
     if _BACKENDS_LOADED:
         return
+
+    _BACKENDS.clear()
 
     backends_dir = Path(__file__).parent / "backends"
     for file in backends_dir.glob("*.py"):
@@ -41,11 +70,44 @@ def _discover_backends() -> None:
             if issubclass(cls, InputBackend) and cls is not InputBackend:
                 try:
                     _BACKENDS.append(cls())
-                except:
+                except Exception:
                     log.debug("Backend %s failed to initialize", cls.__name__)
 
     _BACKENDS_LOADED = True
-    log.debug("Found %d functional audio back-ends: %s", len(_BACKENDS), _BACKENDS)
+    _BACKENDS.sort(key=lambda b: b.priority, reverse=True)
+    log.debug(
+        "Found %d functional audio back-ends: %s",
+        len(_BACKENDS),
+        _BACKENDS,
+    )
+
+
+def _select_backend(device: int | str | None) -> InputBackend:
+    """Return the best backend for the host API of ``device``."""
+
+    _discover_backends()
+    if not _BACKENDS:
+        raise RuntimeError("No audio back-ends loaded at all")
+
+    if device is None:
+        hostapi_idx = sd.default.hostapi
+    else:
+        try:
+            dev_info = sd.query_devices(device, "input")
+            hostapi_idx = dev_info.get("hostapi", sd.default.hostapi)
+        except Exception:
+            hostapi_idx = sd.default.hostapi
+    info = sd.query_hostapis(hostapi_idx)
+    for b in _BACKENDS:
+        try:
+            if b.matches_hostapi(info):
+                log.debug("Selected backend %s for host API %s", b, info.get("name"))
+                return b
+        except Exception:
+            continue
+    raise RuntimeError(
+        f"No suitable audio back-end found for host API {info.get('name', hostapi_idx)}"
+    )
 
 @contextlib.contextmanager
 def open_input(
@@ -59,7 +121,8 @@ def open_input(
     backend: Optional[str] = None,
     **extra_kwargs: Any,
 ) -> Iterator[sd.InputStream]:
-    
+    """Yield a started :class:`sounddevice.InputStream` from the best back-end."""
+
     _discover_backends()
 
     if backend is not None:
@@ -68,23 +131,23 @@ def open_input(
                 chosen = b
                 break
         else:
-           raise RuntimeError(f"Requested backend {backend!r} not found")
+            raise RuntimeError(f"Requested backend {backend!r} not found")
     else:
-        chosen = _BACKENDS[0] #maybe i should add priority values to the backend class
+        chosen = _select_backend(device)
 
     with chosen.open(
-    samplerate=samplerate,
-    blocksize=blocksize,
-    channels=channels,
-    dtype=dtype,
-    device=device,
-    callback=callback,
-    **extra_kwargs
+        samplerate=samplerate,
+        blocksize=blocksize,
+        channels=channels,
+        dtype=dtype,
+        device=device,
+        callback=callback,
+        **extra_kwargs,
     ) as stream:
         yield stream
 
 def rescan_backends() -> None:
     global _BACKENDS_LOADED
     _BACKENDS_LOADED = False
-    _discover_backends()
-    log.debug("Re-scanning backends")
+    _BACKENDS.clear()
+    _discover_backends()    log.debug("Re-scanning backends")
