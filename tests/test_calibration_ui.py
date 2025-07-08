@@ -9,8 +9,10 @@ def _setup_dummy_tk(monkeypatch):
     class DummyVar:
         def __init__(self, master=None, value=None):
             self._value = value
+
         def get(self):
             return self._value
+
         def set(self, v):
             self._value = v
 
@@ -18,16 +20,27 @@ def _setup_dummy_tk(monkeypatch):
         def __init__(self, master=None, width=0, height=0, bg=None):
             self.master = master
             master.canvas = self
+
         def pack(self, *args, **kwargs):
             pass
+
         def create_line(self, *args, **kwargs):
             pass
+
         def delete(self, tag):
             pass
 
     class DummyScale:
         def __init__(self, *args, **kwargs):
             pass
+
+        def pack(self, *args, **kwargs):
+            pass
+
+    class DummyFrame:
+        def __init__(self, master=None):
+            self.master = master
+
         def pack(self, *args, **kwargs):
             pass
 
@@ -35,8 +48,12 @@ def _setup_dummy_tk(monkeypatch):
         def __init__(self, master=None, text=None, command=None):
             self.command = command
             master.button = self
+            if hasattr(master, "master") and master.master is not None:
+                master.master.button = self
+
         def pack(self, *args, **kwargs):
             pass
+
         def invoke(self):
             if self.command:
                 self.command()
@@ -44,36 +61,60 @@ def _setup_dummy_tk(monkeypatch):
     class DummyLabel:
         def __init__(self, master=None, text=None):
             self.master = master
+
         def pack(self, *args, **kwargs):
+            pass
+
+        def config(self, **kwargs):
             pass
 
     class DummyOptionMenu:
         def __init__(self, master=None, var=None, *values):
             self.master = master
+            self.menu = types.SimpleNamespace(
+                delete=lambda *a: None, add_command=lambda *a, **k: None
+            )
+
         def pack(self, *args, **kwargs):
+            pass
+
+        def __getitem__(self, key):
+            if key == "menu":
+                return self.menu
+            raise KeyError(key)
+
+        def destroy(self):
             pass
 
     class DummyTk:
         instance = None
+
         def __init__(self):
             DummyTk.instance = self
             self._bg = "default"
+
         def title(self, title):
             self.title = title
+
         def protocol(self, name, cb):
             self.cb = cb
+
         def after(self, ms, func):
-            return 'id'
+            return "id"
+
         def configure(self, **kwargs):
             if "bg" in kwargs:
                 self._bg = kwargs["bg"]
+
         def cget(self, key):
             if key == "bg":
                 return self._bg
             raise KeyError(key)
+
         def mainloop(self):
-            if hasattr(self, 'button'):
+            if hasattr(self, "button"):
                 self.button.invoke()
+
         def destroy(self):
             pass
 
@@ -81,29 +122,35 @@ def _setup_dummy_tk(monkeypatch):
         Tk=DummyTk,
         Canvas=DummyCanvas,
         Scale=DummyScale,
+        Frame=DummyFrame,
         Button=DummyButton,
         Label=DummyLabel,
         OptionMenu=DummyOptionMenu,
         DoubleVar=DummyVar,
         StringVar=DummyVar,
         IntVar=DummyVar,
-        HORIZONTAL='horizontal',
-        X='x',
+        HORIZONTAL="horizontal",
+        LEFT="left",
+        X="x",
         messagebox=types.SimpleNamespace(showerror=lambda *a, **k: None),
     )
-    monkeypatch.setitem(sys.modules, 'tkinter', tk_mod)
+    monkeypatch.setitem(sys.modules, "tkinter", tk_mod)
     return DummyTk
 
 
 def _setup_dummy_sd(monkeypatch):
     calls = []
+
     class DummyStream:
         def __init__(self, **kwargs):
             calls.append(kwargs)
+
         def start(self):
             pass
+
         def stop(self):
             pass
+
         def close(self):
             pass
 
@@ -114,16 +161,21 @@ def _setup_dummy_sd(monkeypatch):
             {"name": "Mic1", "max_input_channels": 1},
             {"name": "Mic2", "max_input_channels": 1},
         ],
+        check_input_settings=lambda **kw: None,
     )
-    monkeypatch.setitem(sys.modules, 'sounddevice', sd_mod)
+    monkeypatch.setitem(sys.modules, "sounddevice", sd_mod)
     return calls
 
 
 def test_calibrate_canvas_and_stream(monkeypatch):
     DummyTk = _setup_dummy_tk(monkeypatch)
     calls = _setup_dummy_sd(monkeypatch)
-    monkeypatch.setattr('switch_interface.audio.backends.wasapi_backend.get_extra_settings', lambda: None)
+    monkeypatch.setattr(
+        "switch_interface.audio.backends.wasapi_backend.get_extra_settings",
+        lambda: None,
+    )
     import switch_interface.calibration as calibration
+
     importlib.reload(calibration)
     res = calibration.calibrate(calibration.DetectorConfig())
     assert isinstance(res, calibration.DetectorConfig)
