@@ -1,15 +1,16 @@
-from dataclasses import dataclass, asdict
 import json
+import math
 import os
 import tkinter as tk
+from dataclasses import asdict, dataclass
 from tkinter import messagebox
 
 import numpy as np
 import sounddevice as sd
-import math
 
 from .audio.backends.wasapi_backend import get_extra_settings
-from .detection import detect_edges, EdgeState
+from .detection import EdgeState, detect_edges
+
 
 @dataclass
 class DetectorConfig:
@@ -23,6 +24,18 @@ class DetectorConfig:
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".switch_interface")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "detector.json")
+
+# --- UI constants ---------------------------------------------------------
+CANVAS_WIDTH = 500
+CANVAS_HEIGHT = 150
+UPDATE_INTERVAL_MS = 30
+HIGHLIGHT_MS = 150
+PRESS_MARKER_DECAY = 10
+BIAS_ALPHA = 0.005
+RULER_AMPLITUDES = (1, 0.5, 0, -0.5, -1)
+
+STANDARD_RATES = [8000, 16000, 22050, 32000, 44100, 48000, 88200, 96000]
+STANDARD_BLOCKS = [64, 128, 256, 512, 1024, 2048]
 
 
 def load_config(path: str = CONFIG_FILE) -> "DetectorConfig":
@@ -53,60 +66,80 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     db_var = tk.IntVar(master=root, value=config.debounce_ms)
     dev_var = tk.StringVar(master=root, value=config.device or "")
 
-    #sample rate selection. TODO: add a loop that polls the hardware for each and filter the list
-    STANDARD_RATES = [8000, 16000, 22050, 32000, 44100, 48000, 88200, 96000]
     sr_var = tk.IntVar(master=root, value=config.samplerate)
-    tk.Label(root, text="Sample rate").pack(padx=10, pady=(10, 0))
-    tk.OptionMenu(root, sr_var, *STANDARD_RATES).pack(fill=tk.X, padx=10)
-
-    #do the same with block size
-    STANDARD_BLOCKS = [64, 128, 256, 512, 1024, 2048]
     bs_var = tk.IntVar(master=root, value=config.blocksize)
-    tk.Label(root, text="Block size").pack(padx=10, pady=(10, 0))
-    tk.OptionMenu(root, bs_var, *STANDARD_BLOCKS).pack(fill=tk.X, padx=10)
 
-    wave_canvas = tk.Canvas(root, width=500, height=150, bg="white")
+    def _add_scale(var, from_: float, to: float, resolution: float, label: str) -> None:
+        tk.Scale(
+            root,
+            variable=var,
+            from_=from_,
+            to=to,
+            resolution=resolution,
+            label=label,
+            orient=tk.HORIZONTAL,
+        ).pack(fill=tk.X, padx=10, pady=5)
+
+    def _supported(param: str, values: list[int], **base: int | str) -> list[int]:
+        valid: list[int] = []
+        for val in values:
+            kw = {
+                "samplerate": sr_var.get(),
+                "blocksize": bs_var.get(),
+                "device": dev_var.get() or None,
+                "channels": 1,
+                "dtype": "float32",
+                **base,
+            }
+            kw[param] = val
+            try:
+                sd.check_input_settings(**kw)
+            except Exception:
+                continue
+            valid.append(val)
+        return valid or values
+
+    def _valid_rates() -> list[int]:
+        return _supported("samplerate", STANDARD_RATES)
+
+    def _valid_blocks() -> list[int]:
+        return _supported("blocksize", STANDARD_BLOCKS)
+
+    tk.Label(root, text="Sample rate").pack(padx=10, pady=(10, 0))
+    _rates = _valid_rates()
+    if sr_var.get() not in _rates:
+        sr_var.set(_rates[0])
+    sr_menu = tk.OptionMenu(root, sr_var, *_rates)
+    sr_menu.pack(fill=tk.X, padx=10)
+
+    tk.Label(root, text="Block size").pack(padx=10, pady=(10, 0))
+    _blocks = _valid_blocks()
+    if bs_var.get() not in _blocks:
+        bs_var.set(_blocks[0])
+    bs_menu = tk.OptionMenu(root, bs_var, *_blocks)
+    bs_menu.pack(fill=tk.X, padx=10)
+
+    wave_canvas = tk.Canvas(root, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, bg="white")
     wave_canvas.pack(padx=10, pady=5)
 
-    WIDTH = 500
-    HEIGHT = 150
+    WIDTH = CANVAS_WIDTH
+    HEIGHT = CANVAS_HEIGHT
 
     def _draw_ruler() -> None:
-        for amp in (1, 0.5, 0, -0.5, -1):
+        for amp in RULER_AMPLITUDES:
             y = HEIGHT / 2 - amp * (HEIGHT / 2)
             wave_canvas.create_line(0, y, WIDTH, y, fill="#ccc", tags="ruler")
 
     _draw_ruler()
 
-    tk.Scale(
-        root,
-        variable=u_var,
-        from_=-1.0,
-        to=1.0,
-        resolution=0.01,
-        label="Upper offset",
-        orient=tk.HORIZONTAL,
-    ).pack(fill=tk.X, padx=10, pady=5)
+    thr_label = tk.Label(root, text="")
+    thr_label.pack(padx=10, pady=(0, 5))
 
-    tk.Scale(
-        root,
-        variable=l_var,
-        from_=-1.0,
-        to=0.0,
-        resolution=0.01,
-        label="Lower offset",
-        orient=tk.HORIZONTAL,
-    ).pack(fill=tk.X, padx=10, pady=5)
+    _add_scale(u_var, -1.0, 1.0, 0.01, "Upper offset")
 
-    tk.Scale(
-        root,
-        variable=db_var,
-        from_=5,
-        to=200,
-        resolution=1,
-        label="Debounce ms",
-        orient=tk.HORIZONTAL,
-    ).pack(fill=tk.X, padx=10, pady=5)
+    _add_scale(l_var, -1.0, 0.0, 0.01, "Lower offset")
+
+    _add_scale(db_var, 5, 200, 1, "Debounce ms")
 
     devices = [d for d in sd.query_devices() if d.get("max_input_channels", 0) > 0]
     if devices and not dev_var.get():
@@ -121,6 +154,8 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     stream: sd.InputStream | None = None
     edge_state = EdgeState(armed=True, cooldown=0)
     press_pending = False
+    press_marker_x: float | None = None
+    press_marker_counter = 0
     normal_bg = root.cget("bg")
 
     def _stop_stream() -> None:
@@ -133,7 +168,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             stream = None
 
     def _callback(indata: np.ndarray, frames: int, time: int, status: int) -> None:
-        nonlocal buf_index, edge_state, press_pending
+        nonlocal buf_index, edge_state, press_pending, press_marker_x, press_marker_counter
         mono = indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0]
         n = len(mono)
         if n > len(buf):
@@ -148,7 +183,8 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             buf[: n - first] = mono[first:]
         buf_index = (buf_index + n) % len(buf)
         refract = int(math.ceil((db_var.get() / 1000) * sr_var.get()))
-        edge_state, pressed = detect_edges(
+        start_index = buf_index
+        edge_state, pressed, press_idx = detect_edges(
             mono,
             edge_state,
             u_var.get(),
@@ -157,6 +193,14 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         )
         if pressed:
             press_pending = True
+            if press_idx is not None:
+                idx_global = (start_index + press_idx) % len(buf)
+                if idx_global >= buf_index:
+                    rel = idx_global - buf_index
+                else:
+                    rel = len(buf) - (buf_index - idx_global)
+                press_marker_x = rel / len(buf) * WIDTH
+                press_marker_counter = PRESS_MARKER_DECAY
 
     def _start_stream() -> None:
         nonlocal stream
@@ -179,13 +223,9 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
                 try:
                     stream = sd.InputStream(**kwargs)
                 except sd.PortAudioError as exc2:
-                    raise RuntimeError(
-                        "Failed to open audio input device"
-                    ) from exc2
+                    raise RuntimeError("Failed to open audio input device") from exc2
             else:
-                raise RuntimeError(
-                    "Failed to open audio input device"
-                ) from exc
+                raise RuntimeError("Failed to open audio input device") from exc
         stream.start()
 
     def _restart_stream() -> None:
@@ -197,7 +237,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         _draw_ruler()
         data = np.concatenate([buf[buf_index:], buf[:buf_index]])
         nonlocal bias
-        bias = 0.995 * bias + 0.005 * float(data.mean())
+        bias = (1 - BIAS_ALPHA) * bias + BIAS_ALPHA * float(data.mean())
         step = max(1, len(data) // WIDTH)
         if step > 1:
             trimmed = data[: step * WIDTH]
@@ -213,16 +253,27 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         # dynamic threshold lines
         upper = bias + u_var.get()
         lower = bias + l_var.get()
+        thr_label.config(text=f"Upper: {upper:.2f}  Lower: {lower:.2f}")
         y_upper = HEIGHT / 2 - upper * (HEIGHT / 2)
         y_lower = HEIGHT / 2 - lower * (HEIGHT / 2)
         wave_canvas.create_line(0, y_upper, WIDTH, y_upper, fill="red", tags="thr")
         wave_canvas.create_line(0, y_lower, WIDTH, y_lower, fill="red", tags="thr")
-        nonlocal press_pending
+        nonlocal press_pending, press_marker_counter
         if press_pending:
             root.configure(bg="yellow")
-            root.after(150, lambda: root.configure(bg=normal_bg))
+            root.after(HIGHLIGHT_MS, lambda: root.configure(bg=normal_bg))
             press_pending = False
-        root.after(30, _update_wave)
+        if press_marker_counter > 0 and press_marker_x is not None:
+            wave_canvas.create_line(
+                press_marker_x,
+                0,
+                press_marker_x,
+                HEIGHT,
+                fill="orange",
+                tags="press",
+            )
+            press_marker_counter -= 1
+        root.after(UPDATE_INTERVAL_MS, _update_wave)
 
     def _start() -> None:
         nonlocal result
@@ -237,7 +288,11 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         _stop_stream()
         root.destroy()
 
-    tk.Button(root, text="Start", command=_start).pack(pady=10)
+    controls = tk.Frame(root)
+    controls.pack(pady=10)
+    tk.Button(controls, text="Start", command=_start_stream).pack(side=tk.LEFT, padx=5)
+    tk.Button(controls, text="Stop", command=_stop_stream).pack(side=tk.LEFT, padx=5)
+    tk.Button(controls, text="Save", command=_start).pack(side=tk.LEFT, padx=5)
 
     def _on_close() -> None:
         _stop_stream()
@@ -256,7 +311,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         )
         root.destroy()
         return config
-    
+
     _update_wave()
     root.mainloop()
 

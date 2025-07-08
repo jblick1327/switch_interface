@@ -3,11 +3,11 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
-
-from .audio.stream import open_input
+from typing import Callable, Optional, Tuple, Union
 
 import numpy as np
+
+from .audio.stream import open_input
 
 
 @dataclass
@@ -24,10 +24,11 @@ def detect_edges(
     upper_offset: float,
     lower_offset: float,
     refractory_samples: int,
-) -> Tuple[EdgeState, bool]:
+) -> Tuple[EdgeState, bool, Optional[int]]:
     """Detect a falling edge in ``block``.
 
-    Returns the updated ``EdgeState`` and whether a press was detected.
+    Returns the updated ``EdgeState``, whether a press was detected and the
+    index of the detected press within ``block`` if available.
     """
 
     if block.ndim != 1:
@@ -77,6 +78,7 @@ def detect_edges(
             bias=state.bias,
         ),
         press_index is not None,
+        press_index,
     )
 
 
@@ -108,7 +110,7 @@ def listen(on_press: Callable[[], None], cfg: "DetectorConfig") -> None:
     def _callback(indata: np.ndarray, frames: int, _time: int, _status: int) -> None:
         nonlocal state
         mono = indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0]
-        state, pressed = detect_edges(
+        state, pressed, _ = detect_edges(
             mono,
             state,
             cfg.upper_offset,
