@@ -1,0 +1,3 @@
+[console_scripts]
+switch-interface = switch_interface.launcher:main
+switch-interface-cli = switch_interface.__main__:main

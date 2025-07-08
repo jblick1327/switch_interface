@@ -1,6 +1,40 @@
+# Byte-compiled Python files
 __pycache__/
 *.py[cod]
+*$py.class
 
+# Packaging/build artifacts
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
 .venv/
+venv/
+env/
 
-update.patch
+# VSCode settings (local-only)
+.vscode/
+
+# Patches
+*.patch
+
+# Test/coverage outputs
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+nosetests.xml
+coverage.xml
+
+# Mypy/static analysis
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# Logs or debug files
+*.log
+
+# OS/user-specific files
+.DS_Store
+Thumbs.db

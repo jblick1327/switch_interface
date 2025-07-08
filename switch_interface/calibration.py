@@ -50,10 +50,20 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
 
     u_var = tk.DoubleVar(master=root, value=config.upper_offset)
     l_var = tk.DoubleVar(master=root, value=config.lower_offset)
-    sr_var = tk.IntVar(master=root, value=config.samplerate)
-    bs_var = tk.IntVar(master=root, value=config.blocksize)
     db_var = tk.IntVar(master=root, value=config.debounce_ms)
     dev_var = tk.StringVar(master=root, value=config.device or "")
+
+    #sample rate selection. TODO: add a loop that polls the hardware for each and filter the list
+    STANDARD_RATES = [8000, 16000, 22050, 32000, 44100, 48000, 88200, 96000]
+    sr_var = tk.IntVar(master=root, value=config.samplerate)
+    tk.Label(root, text="Sample rate").pack(padx=10, pady=(10, 0))
+    tk.OptionMenu(root, sr_var, *STANDARD_RATES).pack(fill=tk.X, padx=10)
+
+    #do the same with block size
+    STANDARD_BLOCKS = [64, 128, 256, 512, 1024, 2048]
+    bs_var = tk.IntVar(master=root, value=config.blocksize)
+    tk.Label(root, text="Block size").pack(padx=10, pady=(10, 0))
+    tk.OptionMenu(root, bs_var, *STANDARD_BLOCKS).pack(fill=tk.X, padx=10)
 
     wave_canvas = tk.Canvas(root, width=500, height=150, bg="white")
     wave_canvas.pack(padx=10, pady=5)
@@ -85,26 +95,6 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         to=0.0,
         resolution=0.01,
         label="Lower offset",
-        orient=tk.HORIZONTAL,
-    ).pack(fill=tk.X, padx=10, pady=5)
-
-    tk.Scale(
-        root,
-        variable=sr_var,
-        from_=100,
-        to=96_000,
-        resolution=1_000,
-        label="Sample rate",
-        orient=tk.HORIZONTAL,
-    ).pack(fill=tk.X, padx=10, pady=5)
-
-    tk.Scale(
-        root,
-        variable=bs_var,
-        from_=64,
-        to=1024,
-        resolution=64,
-        label="Block size",
         orient=tk.HORIZONTAL,
     ).pack(fill=tk.X, padx=10, pady=5)
 
@@ -197,6 +187,10 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
                     "Failed to open audio input device"
                 ) from exc
         stream.start()
+
+    def _restart_stream() -> None:
+        _stop_stream()
+        _start_stream()
 
     def _update_wave() -> None:
         wave_canvas.delete("all")
