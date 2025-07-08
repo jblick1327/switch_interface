@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
 
-from .audio.wasapi import get_extra_settings
+from .audio.backends.wasapi import get_extra_settings
 
 import numpy as np
 

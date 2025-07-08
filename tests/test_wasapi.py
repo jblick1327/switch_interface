@@ -6,7 +6,7 @@ import pytest
 
 def _reload_with_dummy_sd(monkeypatch, sd_mod):
     monkeypatch.setitem(sys.modules, "sounddevice", sd_mod)
-    import switch_interface.audio.wasapi as wasapi
+    import switch_interface.audio.backends.wasapi as wasapi
     importlib.reload(wasapi)
     return wasapi
 
