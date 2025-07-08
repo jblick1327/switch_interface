@@ -40,7 +40,7 @@ def _discover_backends() -> None:
         for name, cls in inspect.getmembers(mod, inspect.isclass):
             if issubclass(cls, InputBackend) and cls is not InputBackend:
                 try:
-                    _BACKENDS.append(cls)
+                    _BACKENDS.append(cls())
                 except:
                     log.debug("Backend %s failed to initialize", cls.__name__)
 
