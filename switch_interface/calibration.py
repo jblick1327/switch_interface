@@ -204,9 +204,15 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         data = np.concatenate([buf[buf_index:], buf[:buf_index]])
         nonlocal bias
         bias = 0.995 * bias + 0.005 * float(data.mean())
+        step = max(1, len(data) // WIDTH)
+        if step > 1:
+            trimmed = data[: step * WIDTH]
+        else:
+            trimmed = data
+        samples = trimmed.reshape(-1, step).mean(axis=1)
         points: list[float] = []
-        for i, sample in enumerate(data):
-            x = i * WIDTH / len(data)
+        x_positions = np.linspace(0, WIDTH, len(samples), endpoint=False)
+        for x, sample in zip(x_positions, samples):
             y = HEIGHT / 2 - sample * (HEIGHT / 2)
             points.extend([x, y])
         wave_canvas.create_line(*points, fill="blue", tags="wave")
