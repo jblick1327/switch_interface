@@ -8,7 +8,7 @@ import numpy as np
 import sounddevice as sd
 import math
 
-from .audio.backends.wasapi import get_extra_settings
+from .audio.backends.wasapi_backend import get_extra_settings
 from .detection import detect_edges, EdgeState
 
 @dataclass

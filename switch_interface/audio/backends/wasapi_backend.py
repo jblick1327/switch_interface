@@ -8,16 +8,27 @@ import sounddevice as sd
 
 from ..stream import InputBackend
 
+
+def get_extra_settings() -> sd.WasapiSettings | None:
+    """Return exclusive-mode settings for WASAPI if available."""
+    try:
+        info = sd.query_hostapis(sd.default.hostapi)
+        if info.get("name") == "Windows WASAPI":
+            return sd.WasapiSettings(exclusive=True)
+    except Exception:
+        pass
+    return None
+
 log = logging.getLogger(__name__)
 
 
-class CoreAudioBackend(InputBackend):
-    """Backend for macOS Core Audio."""
+class WasapiBackend(InputBackend):
+    """Backend for the Windows WASAPI host API."""
 
-    priority = 10
+    priority = 20
 
     def matches_hostapi(self, hostapi_info: dict[str, Any]) -> bool:
-        return "Core Audio" in hostapi_info.get("name", "")
+        return "WASAPI" in hostapi_info.get("name", "")
 
     @contextlib.contextmanager
     def open(
@@ -41,8 +52,19 @@ class CoreAudioBackend(InputBackend):
         )
         kwargs.update(extra_kwargs)
 
-        stream = sd.InputStream(**kwargs)
-        stream.start()
+        extra = get_extra_settings()
+        if extra is not None:
+            kwargs["extra_settings"] = extra
+        try:
+            stream = sd.InputStream(**kwargs)
+            stream.start()
+        except sd.PortAudioError as exc:
+            if extra is None:
+                raise
+            log.debug("WASAPI exclusive mode failed: %s", exc)
+            kwargs.pop("extra_settings", None)
+            stream = sd.InputStream(**kwargs)
+            stream.start()
         try:
             yield stream
         finally:

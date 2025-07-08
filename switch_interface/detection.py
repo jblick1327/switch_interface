@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
 
-from .audio.backends.wasapi import get_extra_settings
+from .audio.stream import open_input
 
 import numpy as np
 
@@ -87,101 +87,45 @@ def check_device(
     device: Optional[int | str] = None,
 ) -> None:
     """Raise ``RuntimeError`` if the input device can't be opened."""
-    import sounddevice as sd
-
-    extra = get_extra_settings()
-    kwargs = dict(
-        samplerate=samplerate,
-        blocksize=blocksize,
-        channels=1,
-        dtype="float32",
-        device=device,
-    )
-    if extra is not None:
-        kwargs["extra_settings"] = extra
     try:
-        with sd.InputStream(callback=lambda *a: None, **kwargs):
+        with open_input(
+            samplerate=samplerate,
+            blocksize=blocksize,
+            device=device,
+            callback=lambda *a: None,
+        ):
             pass
-    except sd.PortAudioError as exc:
-        if extra is not None:
-            kwargs.pop("extra_settings", None)
-            try:
-                with sd.InputStream(callback=lambda *a: None, **kwargs):
-                    pass
-            except sd.PortAudioError as exc2:
-                raise RuntimeError("Failed to open audio input device") from exc2
-        else:
-            raise RuntimeError("Failed to open audio input device") from exc
+    except Exception as exc:
+        raise RuntimeError("Failed to open audio input device") from exc
 
 
-def listen(
-    on_press: Callable[[], None],
-    *,
-    upper_offset: float = -0.2,
-    lower_offset: float = -0.5,
-    samplerate: int = 44_100,
-    blocksize: int = 256,
-    debounce_ms: int = 40,
-    device: Optional[int | str] = None,
-) -> None:
-    import sounddevice as sd
+def listen(on_press: Callable[[], None], cfg: "DetectorConfig") -> None:
+    """Listen for switch presses and call ``on_press`` when detected."""
 
-    if upper_offset <= lower_offset:
-        raise ValueError("upper_offset must be > lower_offset (both negative values)")
-
-    refractory_samples = int(math.ceil((debounce_ms / 1_000) * samplerate))
-
+    refract = int(math.ceil((cfg.debounce_ms / 1000) * cfg.samplerate))
     state = EdgeState(armed=True, cooldown=0)
 
-    def _callback(indata: np.ndarray, frames: int, _: int, __: int) -> None:
+    def _callback(indata: np.ndarray, frames: int, _time: int, _status: int) -> None:
         nonlocal state
         mono = indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0]
-
         state, pressed = detect_edges(
             mono,
             state,
-            upper_offset,
-            lower_offset,
-            refractory_samples,
+            cfg.upper_offset,
+            cfg.lower_offset,
+            refract,
         )
         if pressed:
             on_press()
 
-    extra = get_extra_settings()
-    stream_kwargs = dict(
-        samplerate=samplerate,
-        blocksize=blocksize,
-        channels=1,
-        dtype="float32",
+    with open_input(
+        samplerate=cfg.samplerate,
+        blocksize=cfg.blocksize,
+        device=cfg.device,
         callback=_callback,
-        device=device,
-    )
-    if extra is not None:
-        stream_kwargs["extra_settings"] = extra
-
-    def _run(kwargs):
-        with sd.InputStream(**kwargs):
-            try:
-                while True:
-                    time.sleep(0.1)
-            except KeyboardInterrupt:
-                return
-
-    try:
-        _run(stream_kwargs)
-    except sd.PortAudioError as exc:
-        if extra is not None:
-            stream_kwargs.pop("extra_settings", None)
-            try:
-                _run(stream_kwargs)
-            except sd.PortAudioError as exc2:
-                raise RuntimeError(
-                    "Failed to open audio input device"
-                ) from exc2
-        else:
-            raise RuntimeError(
-                "Failed to open audio input device"
-            ) from exc
+    ):
+        while True:
+            time.sleep(0.1)
 
 
 if __name__ == "__main__":
