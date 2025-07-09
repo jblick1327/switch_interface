@@ -171,7 +171,7 @@ def test_calibrate_canvas_and_stream(monkeypatch):
     DummyTk = _setup_dummy_tk(monkeypatch)
     calls = _setup_dummy_sd(monkeypatch)
     monkeypatch.setattr(
-        "switch_interface.audio.backends.wasapi_backend.get_extra_settings",
+        "switch_interface.audio.backends.wasapi.get_extra_settings",
         lambda: None,
     )
     import switch_interface.calibration as calibration
