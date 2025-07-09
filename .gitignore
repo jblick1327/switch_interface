@@ -38,3 +38,5 @@ coverage.xml
 # OS/user-specific files
 .DS_Store
 Thumbs.db
+
+npy_gen.py
