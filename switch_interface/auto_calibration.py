@@ -1,10 +1,22 @@
-"""Automatic search for ``detect_edges`` parameters.
-
-This module analyses an audio clip of switch presses and returns a
-:class:`~switch_interface.calibration.DetectorConfig` tuned for the
-``detect_edges`` algorithm.  The search procedure closely follows the
-specification in ``AGENTS.md``.
 """
+### AUTO-CALIBRATION TASK (simple monotonic approach)
+
+1.  Sweep debounce_ms in {20,40,…,160} with loose thresholds
+    upper0=-0.05, lower0=-0.80.  Pick the debounce that makes
+    count closest to TARGET=10 (ties → lower debounce).
+2.  With GAP=0.30 and that debounce, binary-search upper_offset
+    in [-0.60,-0.05] until detect_edges() returns exactly 10
+    presses or bounds converge to <0.01.
+3.  If still off, line-search GAP in {0.25,0.28,0.30,0.32,0.35}.
+4.  Return DetectorConfig(upper, upper-GAP, debounce) and attach
+    .events list (sample indices).  No changes to detect_edges().
+5.  Finish <50 ms on the 576 000-sample fixture.
+
+### TODO(Codex):
+* implement auto_calibrate(samples, fs=48_000, target=10)
+* keep helpers private; pass pytest once len(cfg.events)==10
+"""
+
 
 from __future__ import annotations
 
