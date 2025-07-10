@@ -1,220 +1,221 @@
-"""Automatic parameter search for the edge detector.
+"""Automatic search for ``detect_edges`` parameters.
 
-This module exposes :func:`auto_calibrate` which analyses an audio clip of
-switch presses and returns a :class:`~switch_interface.calibration.DetectorConfig`
-with tuned ``upper_offset``, ``lower_offset`` and ``debounce_ms`` values.
-
-The implementation follows the specification in the task description.  The
-search consists of a binary search for the upper threshold, a binary search for
-the debounce time and finally a linear search over a set of lower-threshold
-ratios.  If multiple configurations detect exactly ``target`` presses, a
-tie‑breaker based on press timing is used.
+This module analyses an audio clip of switch presses and returns a
+:class:`~switch_interface.calibration.DetectorConfig` tuned for the
+``detect_edges`` algorithm.  The search procedure closely follows the
+specification in ``AGENTS.md``.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
 import math
-from pathlib import Path
-from typing import List, Sequence, Tuple
 import warnings
+from dataclasses import replace
+from typing import List, Tuple
 
 import numpy as np
 
 from .calibration import DetectorConfig
+from .detection import EdgeState, detect_edges
 
 
 class AutoCalWarning(RuntimeWarning):
-    """Raised when auto calibration fails to hit the target exactly."""
+    """Raised when ``auto_calibrate`` fails to hit the target exactly."""
 
 
-def _detect_events(
+_BLOCKSIZE = 256
+
+
+def _calc_press_index(
+    state: EdgeState,
+    block: np.ndarray,
+    upper: float,
+    lower: float,
+    refractory: int,
+) -> int | None:
+    """Return the press index within ``block`` if one occurs."""
+
+    bias = state.bias
+    if state.armed and len(block):
+        bias = 0.995 * bias + 0.005 * float(block.mean())
+
+    dyn_upper = bias + upper
+    dyn_lower = bias + lower
+    samples = np.concatenate(([state.prev_sample], block))
+    crossings = (samples[:-1] >= dyn_upper) & (samples[1:] <= dyn_lower)
+
+    armed = state.armed
+    cooldown = state.cooldown
+    press_index: int | None = None
+
+    if not armed:
+        if cooldown >= len(block):
+            cooldown -= len(block)
+        else:
+            armed = True
+            offset = cooldown
+            remaining = crossings[offset:]
+            idxs = np.flatnonzero(remaining)
+            if idxs.size:
+                press_index = int(idxs[0] + offset)
+    else:
+        idxs = np.flatnonzero(crossings)
+        if idxs.size:
+            press_index = int(idxs[0])
+
+    if press_index is not None:
+        armed = False
+        cooldown = refractory - (len(block) - press_index - 1)
+        if cooldown <= 0:
+            cooldown = 0
+            armed = True
+
+    state = EdgeState(
+        armed=armed,
+        cooldown=cooldown,
+        prev_sample=block[-1] if len(block) else state.prev_sample,
+        bias=bias,
+    )
+    return press_index, state
+
+
+def _offline_detect(
     samples: np.ndarray,
     fs: int,
     upper: float,
     lower: float,
     debounce_ms: int,
 ) -> List[int]:
-    """Return indices of detected edges using a vectorised algorithm."""
-
-    bias = np.zeros_like(samples)
-    if len(samples) > 1:
-        for i in range(1, len(samples)):
-            bias[i] = 0.995 * bias[i - 1] + 0.005 * samples[i]
-
-    dyn_upper = bias[:-1] + upper
-    dyn_lower = bias[:-1] + lower
-    crossings = (samples[:-1] >= dyn_upper) & (samples[1:] <= dyn_lower)
-    idxs = np.flatnonzero(crossings) + 1
+    """Run ``detect_edges`` over ``samples`` and return event indices."""
 
     refractory = int(math.ceil((debounce_ms / 1000) * fs))
-    if refractory <= 1:
-        return idxs.tolist()
-
+    state = EdgeState(armed=True, cooldown=0)
     events: List[int] = []
-    last = -refractory
-    for idx in idxs:
-        if idx - last >= refractory:
-            events.append(int(idx))
-            last = idx
+
+    for start in range(0, len(samples), _BLOCKSIZE):
+        block = samples[start : start + _BLOCKSIZE]
+        prev = state
+        state, pressed = detect_edges(block, state, upper, lower, refractory)
+        if pressed:
+            idx, _ = _calc_press_index(prev, block, upper, lower, refractory)
+            if idx is not None:
+                events.append(start + idx)
     return events
 
 
-def _score_events(events: Sequence[int], fs: int) -> float:
-    """Return tie-breaker score for ``events``."""
-
-    if len(events) < 2:
-        return float("inf")
-
-    gaps = np.diff(events) / fs
-    slow = gaps[:3].mean() if len(gaps) >= 3 else gaps.mean()
-    fast = gaps[3:].mean() if len(gaps) > 3 else slow
-    return abs(slow - 0.8) + abs(fast - 0.3)
-
-
-def _binary_search_threshold(
+def _binary_search_upper(
     samples: np.ndarray,
     fs: int,
-    low: float,
-    high: float,
+    gap: float,
     target: int,
-    *,
-    debounce_ms: int = 60,
-    ratio: float = 1.5,
-    max_iters: int = 15,
-) -> Tuple[float, List[Tuple[float, int]]]:
-    """Binary search the ``upper_offset`` producing ``target`` events."""
+    iters: int = 5,
+) -> Tuple[float, List[int]]:
+    """Binary search ``upper_offset`` for ``target`` events."""
 
-    history: List[Tuple[float, int]] = []
-    best_val = high
+    low, high = -0.60, -0.05
+    best = high
+    best_events: List[int] = []
     best_diff = float("inf")
-    for _ in range(max_iters):
+    for _ in range(iters):
         mid = (low + high) / 2.0
-        events = _detect_events(samples, fs, mid, mid * ratio, debounce_ms)
-        count = len(events)
-        history.append((mid, count))
-        diff = abs(count - target)
+        events = _offline_detect(samples, fs, mid, mid - gap, 80)
+        diff = abs(len(events) - target)
         if diff < best_diff:
+            best = mid
+            best_events = events
             best_diff = diff
-            best_val = mid
-        if count == target:
-            best_val = mid
+        if len(events) == target:
+            best = mid
+            best_events = events
             break
-        if count < target:
+        if len(events) < target:
             high = mid
         else:
             low = mid
-    return best_val, history
+    return best, best_events
 
 
 def _binary_search_debounce(
     samples: np.ndarray,
     fs: int,
-    threshold: float,
-    low: int,
-    high: int,
+    upper: float,
+    lower: float,
     target: int,
-    *,
-    ratio: float = 1.5,
-    max_iters: int = 8,
-) -> Tuple[int, List[Tuple[int, int]]]:
-    """Binary search the debounce duration producing ``target`` events."""
+) -> Tuple[int, List[int]]:
+    """Binary search ``debounce_ms`` for ``target`` events."""
 
-    history: List[Tuple[int, int]] = []
-    best_val = high
-    best_diff = float("inf")
+    low, high = 20, 160
+    best_db = high
+    best_events = _offline_detect(samples, fs, upper, lower, best_db)
+    best_diff = abs(len(best_events) - target)
 
-    while low <= high and max_iters:
-        max_iters -= 1
-        mid = int(round(((low + high) / 2) / 20.0)) * 20
+    while low <= high:
+        mid = int(round((low + high) / 40.0)) * 20
         mid = max(20, min(160, mid))
-        events = _detect_events(samples, fs, threshold, threshold * ratio, mid)
-        count = len(events)
-        history.append((mid, count))
-        diff = abs(count - target)
-        if diff < best_diff:
+        events = _offline_detect(samples, fs, upper, lower, mid)
+        diff = abs(len(events) - target)
+        if diff < best_diff or (diff == best_diff and mid < best_db):
+            best_db = mid
+            best_events = events
             best_diff = diff
-            best_val = mid
-        if count == target:
-            high = mid - 20
-            continue
-        if count > target:
+        if diff == 0:
+            break
+        if len(events) > target:
             low = mid + 20
         else:
             high = mid - 20
+    return best_db, best_events
 
-    return best_val, history
 
+def auto_calibrate(samples: np.ndarray, fs: int = 48_000, target: int = 10) -> DetectorConfig:
+    """Return ``DetectorConfig`` tuned for ``samples``."""
 
-def auto_calibrate(
-    samples: np.ndarray,
-    fs: int = 48_000,
-    target: int = 10,
-    max_iters: int = 15,
-) -> DetectorConfig:
-    """Return detector parameters that find ``target`` presses in ``samples``."""
-
-    thr, _ = _binary_search_threshold(
-        samples, fs, -0.8, -0.05, target, debounce_ms=60, ratio=1.5, max_iters=max_iters
+    default_cfg = DetectorConfig()
+    events = _offline_detect(
+        samples,
+        fs,
+        default_cfg.upper_offset,
+        default_cfg.lower_offset,
+        default_cfg.debounce_ms,
     )
-
-    db, _ = _binary_search_debounce(
-        samples, fs, thr, 20, 160, target, ratio=1.5, max_iters=max_iters
-    )
-
-    best_ratio = 1.5
-    best_events = _detect_events(samples, fs, thr, thr * best_ratio, db)
-    best_diff = abs(len(best_events) - target)
-    best_score = _score_events(best_events, fs) if not best_diff else float("inf")
-
-    for ratio in (1.3, 1.4, 1.5, 1.6):
-        events = _detect_events(samples, fs, thr, thr * ratio, db)
-        diff = abs(len(events) - target)
-        if diff > best_diff:
-            continue
-        score = _score_events(events, fs) if diff == 0 else float("inf")
-        update = False
-        if diff < best_diff:
-            update = True
-        elif diff == best_diff and score < best_score:
-            update = True
-        elif diff == best_diff and score == best_score:
-            update = False
-        if update:
-            best_ratio = ratio
-            best_events = events
-            best_diff = diff
-            best_score = score
-
-    cfg = replace(
-        DetectorConfig(),
-        upper_offset=thr,
-        lower_offset=thr * best_ratio,
-        debounce_ms=db,
-    )
-    cfg.events = best_events  # type: ignore[attr-defined]
-
-    if best_diff:
-        warnings.warn(
-            "Could not exactly match target press count", AutoCalWarning
+    if len(events) == target:
+        cfg = replace(
+            default_cfg,
+            upper_offset=default_cfg.upper_offset,
+            lower_offset=default_cfg.lower_offset,
+            debounce_ms=default_cfg.debounce_ms,
         )
+        cfg.events = events  # type: ignore[attr-defined]
+        cfg.autocal_method = "default_ok"  # type: ignore[attr-defined]
+        return cfg
 
-    return cfg
+    best_score = float("inf")
+    best_cfg: DetectorConfig | None = None
+    best_events: List[int] = []
 
+    for gap_i in range(10, 41, 5):
+        gap = gap_i / 100.0
+        upper, _ = _binary_search_upper(samples, fs, gap, target)
+        debounce, events = _binary_search_debounce(samples, fs, upper, upper - gap, target)
+        diff = abs(len(events) - target)
+        gaps = np.diff(events) / fs
+        std = float(np.std(gaps)) if gaps.size else 0.0
+        score = diff * 1000 + std * 10 + debounce / 10
+        if score < best_score or (score == best_score and debounce < (best_cfg.debounce_ms if best_cfg else float("inf"))):
+            best_score = score
+            best_cfg = replace(
+                DetectorConfig(),
+                upper_offset=upper,
+                lower_offset=upper - gap,
+                debounce_ms=debounce,
+            )
+            best_events = events
 
-if __name__ == "__main__":  # pragma: no cover - manual utility
-    import matplotlib.pyplot as plt
+    assert best_cfg is not None  # for type checkers
+    best_cfg.events = best_events  # type: ignore[attr-defined]
+    best_cfg.autocal_method = "searched"  # type: ignore[attr-defined]
 
-    data_path = Path(__file__).resolve().parents[1] / "tests" / "data" / "ten_presses.npy"
-    data = np.load(str(data_path))
-    result = auto_calibrate(data)
-    print(
-        f"upper={result.upper_offset:.3f} lower={result.lower_offset:.3f} debounce_ms={result.debounce_ms}"
-    )
+    if len(best_events) != target:
+        warnings.warn(AutoCalWarning("Could not exactly match target press count"))
 
-    plt.plot(data, lw=0.8)
-    for idx in result.events:
-        plt.axvline(idx, color="red", lw=0.5)
-    plt.title("Detected switch presses")
-    plt.show()
-
+    return best_cfg
