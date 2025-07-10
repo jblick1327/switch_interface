@@ -36,7 +36,7 @@ def _detect_events(
         if armed:
             valid = block[block > dyn_lower]
             if valid.size:
-                bias = 0.999 * bias + 0.001 * float(valid.mean())
+                bias = 0.995 * bias + 0.005 * float(valid.mean())
         dyn_upper = bias + upper
         dyn_lower = bias + lower
 
@@ -49,8 +49,10 @@ def _detect_events(
             if idxs.size:
                 press_idx = int(idxs[0])
         else:
-            if cooldown >= len(block):
+            if cooldown > len(block):
                 cooldown -= len(block)
+                if cooldown == 0 and block[-1] >= dyn_upper:
+                    armed = True
             else:
                 offset = cooldown
                 cooldown = 0
@@ -92,7 +94,7 @@ def calibrate(
         upper_offset=-0.20,
         lower_offset=-0.50,
         debounce_ms=35,
-        block_size=256,
+        block_size=128,
     )
 
     small_block = min(block_sizes) if block_sizes else 64
@@ -107,7 +109,7 @@ def calibrate(
     if count == target_presses:
         return DEFAULTS.copy()
 
-    upper_grid = np.linspace(-0.55, -0.10, 10)
+    upper_grid = np.linspace(-0.40, -0.05, 10)
     gap_grid = np.linspace(0.25, 0.35, 5)
     debounce_vals = range(20, 181, 20)
 
@@ -177,7 +179,7 @@ def calibrate(
     best_l = best_u - best_gap
 
     best_block = small_block
-    for size in sorted(block_sizes, reverse=True):
+    for size in sorted(block_sizes):
         cnt = _detect_events(samples, fs, best_u, best_l, best_db, size)
         if cnt == target_presses:
             best_block = size
