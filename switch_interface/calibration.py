@@ -148,14 +148,16 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             buf[: n - first] = mono[first:]
         buf_index = (buf_index + n) % len(buf)
         refract = int(math.ceil((db_var.get() / 1000) * sr_var.get()))
-        edge_state, pressed = detect_edges(
+        edge_state, idx = detect_edges(
             mono,
             edge_state,
             u_var.get(),
             l_var.get(),
             refract,
+            verbose=False,
+            block_index=0,
         )
-        if pressed:
+        if idx is not None:
             press_pending = True
 
     def _start_stream() -> None:

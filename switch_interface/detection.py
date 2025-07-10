@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from typing import Callable, Optional, Tuple
 from .audio.backends.wasapi import get_extra_settings
 
 import numpy as np
+
+logger = logging.getLogger("switch_detect")
 
 
 @dataclass
@@ -24,7 +27,10 @@ def detect_edges(
     upper_offset: float,
     lower_offset: float,
     refractory_samples: int,
-) -> Tuple[EdgeState, bool]:
+    *,
+    verbose: bool = False,
+    block_index: int = 0,
+) -> Tuple[EdgeState, Optional[int]]:
     """Detect a falling edge in ``block``.
 
     Returns the updated ``EdgeState`` and whether a press was detected.
@@ -33,12 +39,25 @@ def detect_edges(
     if block.ndim != 1:
         raise ValueError(f"block must be a 1-D array (got shape {block.shape})")
 
-    if state.armed:
-        # exponential moving average over the current block
-        state.bias = 0.995 * state.bias + 0.005 * float(block.mean())
+    # exponential moving average over the current block
+    valid = block[block > state.bias + lower_offset]
+    if valid.size:
+        state.bias = 0.99 * state.bias + 0.01 * float(valid.mean())
 
     dyn_upper = state.bias + upper_offset
     dyn_lower = state.bias + lower_offset
+
+    if verbose:
+        logger.debug(
+            "BLOCK idx=%d  bias=%.4f  up=%.4f  low=%.4f  armed=%s  cd=%d",
+            block_index,
+            state.bias,
+            dyn_upper,
+            dyn_lower,
+            state.armed,
+            state.cooldown,
+        )
+
 
     samples = np.concatenate(([state.prev_sample], block))
     crossings = (samples[:-1] >= dyn_upper) & (samples[1:] <= dyn_lower)
@@ -51,22 +70,32 @@ def detect_edges(
         if cooldown >= len(block):
             cooldown -= len(block)
         else:
-            armed = True
-            offset = cooldown
-            remaining = crossings[offset:]
-            idxs = np.flatnonzero(remaining)
-            if idxs.size:
-                press_index = idxs[0] + offset
+            idx = cooldown
+            while cooldown > 0 and idx < len(block):
+                cooldown -= 1
+                idx += 1
+            if cooldown == 0 and idx > 0 and block[idx - 1] >= dyn_upper:
+                armed = True
+            if armed:
+                remaining = crossings[idx:]
+                idxs = np.flatnonzero(remaining)
+                if idxs.size:
+                    press_index = idxs[0] + idx
     else:
         idxs = np.flatnonzero(crossings)
         if idxs.size:
             press_index = idxs[0]
 
     if press_index is not None:
+        if verbose:
+            logger.debug("PRESS t=%.3f s idx=%d", (block_index + press_index) / 1.0, block_index + press_index)
         armed = False
-        cooldown = refractory_samples - (len(block) - press_index - 1)
-        if cooldown <= 0:
-            cooldown = 0
+        cooldown = refractory_samples
+        idx = press_index + 1
+        while cooldown > 0 and idx < len(block):
+            cooldown -= 1
+            idx += 1
+        if cooldown == 0 and block[idx - 1] >= dyn_upper:
             armed = True
 
     return (
@@ -76,7 +105,7 @@ def detect_edges(
             prev_sample=block[-1] if len(block) else state.prev_sample,
             bias=state.bias,
         ),
-        press_index is not None,
+        press_index,
     )
 
 
@@ -123,8 +152,12 @@ def listen(
     blocksize: int = 256,
     debounce_ms: int = 40,
     device: Optional[int | str] = None,
+    verbose: bool = False,
 ) -> None:
     import sounddevice as sd
+
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
 
     if upper_offset <= lower_offset:
         raise ValueError("upper_offset must be > lower_offset (both negative values)")
@@ -132,20 +165,32 @@ def listen(
     refractory_samples = int(math.ceil((debounce_ms / 1_000) * samplerate))
 
     state = EdgeState(armed=True, cooldown=0)
+    block_index = 0
+    sample_index = 0
 
     def _callback(indata: np.ndarray, frames: int, _: int, __: int) -> None:
-        nonlocal state
+        nonlocal state, block_index, sample_index
         mono = indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0]
 
-        state, pressed = detect_edges(
+        state, press_idx = detect_edges(
             mono,
             state,
             upper_offset,
             lower_offset,
             refractory_samples,
+            verbose=verbose,
+            block_index=block_index,
         )
-        if pressed:
+        if press_idx is not None:
+            if verbose:
+                logger.debug(
+                    "PRESS t=%.3f s idx=%d",
+                    (sample_index + press_idx) / samplerate,
+                    sample_index + press_idx,
+                )
             on_press()
+        block_index += 1
+        sample_index += len(mono)
 
     extra = get_extra_settings()
     stream_kwargs = dict(

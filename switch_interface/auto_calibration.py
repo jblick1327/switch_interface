@@ -33,10 +33,9 @@ def _detect_events(
         if not len(block):
             continue
         dyn_lower = bias + lower
-        if armed:
-            valid = block[block > dyn_lower]
-            if valid.size:
-                bias = 0.995 * bias + 0.005 * float(valid.mean())
+        valid = block[block > dyn_lower]
+        if valid.size:
+            bias = 0.99 * bias + 0.01 * float(valid.mean())
         dyn_upper = bias + upper
         dyn_lower = bias + lower
 
