@@ -1,228 +1,195 @@
+"""Automatic calibration for clean digital switch signals."""
+
 from __future__ import annotations
 
 import math
-import warnings
-from dataclasses import replace
-from typing import List, Tuple
+from typing import Tuple
 
 import numpy as np
 
-from .calibration import DetectorConfig
-from .detection import EdgeState, detect_edges
 
-
-class AutoCalWarning(RuntimeWarning):
-    """Raised when ``auto_calibrate`` fails to hit the target exactly."""
-
-
-_BLOCKSIZE = 256
-
-
-def _calc_press_index(
-    state: EdgeState,
-    block: np.ndarray,
-    upper: float,
-    lower: float,
-    refractory: int,
-) -> int | None:
-    """Return the press index within ``block`` if one occurs."""
-
-    bias = state.bias
-    if state.armed and len(block):
-        bias = 0.995 * bias + 0.005 * float(block.mean())
-
-    dyn_upper = bias + upper
-    dyn_lower = bias + lower
-    samples = np.concatenate(([state.prev_sample], block))
-    crossings = (samples[:-1] >= dyn_upper) & (samples[1:] <= dyn_lower)
-
-    armed = state.armed
-    cooldown = state.cooldown
-    press_index: int | None = None
-
-    if not armed:
-        if cooldown >= len(block):
-            cooldown -= len(block)
-        else:
-            armed = True
-            offset = cooldown
-            remaining = crossings[offset:]
-            idxs = np.flatnonzero(remaining)
-            if idxs.size:
-                press_index = int(idxs[0] + offset)
-    else:
-        idxs = np.flatnonzero(crossings)
-        if idxs.size:
-            press_index = int(idxs[0])
-
-    if press_index is not None:
-        armed = False
-        cooldown = refractory - (len(block) - press_index - 1)
-        if cooldown <= 0:
-            cooldown = 0
-            armed = True
-
-    state = EdgeState(
-        armed=armed,
-        cooldown=cooldown,
-        prev_sample=block[-1] if len(block) else state.prev_sample,
-        bias=bias,
-    )
-    return press_index, state
-
-
-def _offline_detect(
+def _detect_events(
     samples: np.ndarray,
     fs: int,
     upper: float,
     lower: float,
     debounce_ms: int,
-) -> List[int]:
-    """Run ``detect_edges`` over ``samples`` and return event indices."""
+    block_size: int,
+) -> int:
+    """Return the number of press events detected.
 
+    Implements a simple Schmitt trigger with dynamic baseline and
+    refractory period. Processing is done in blocks of ``block_size``.
+    """
     refractory = int(math.ceil((debounce_ms / 1000) * fs))
-    state = EdgeState(armed=True, cooldown=0)
-    events: List[int] = []
+    bias = 0.0
+    prev = 0.0
+    cooldown = 0
+    armed = True
+    presses = 0
 
-    for start in range(0, len(samples), _BLOCKSIZE):
-        block = samples[start : start + _BLOCKSIZE]
-        prev = state
-        state, pressed = detect_edges(block, state, upper, lower, refractory)
-        if pressed:
-            idx, _ = _calc_press_index(prev, block, upper, lower, refractory)
-            if idx is not None:
-                events.append(start + idx)
-    return events
+    for start in range(0, len(samples), block_size):
+        block = samples[start : start + block_size]
+        if not len(block):
+            continue
+        dyn_lower = bias + lower
+        if armed:
+            valid = block[block > dyn_lower]
+            if valid.size:
+                bias = 0.999 * bias + 0.001 * float(valid.mean())
+        dyn_upper = bias + upper
+        dyn_lower = bias + lower
 
+        arr = np.concatenate(([prev], block))
+        down = (arr[1:] <= dyn_lower) & (arr[:-1] > dyn_lower)
 
-def _binary_search_upper_exact(
-    samples: np.ndarray,
-    fs: int,
-    gap: float,
-    debounce_ms: int,
-    target: int,
-) -> Tuple[float, List[int]]:
-    """Binary search ``upper_offset`` aiming for ``target`` events."""
-
-    low, high = -0.60, -0.05
-    best = high
-    best_events = _offline_detect(samples, fs, best, best - gap, debounce_ms)
-    best_diff = abs(len(best_events) - target)
-
-    while high - low > 0.01:
-        mid = (low + high) / 2.0
-        events = _offline_detect(samples, fs, mid, mid - gap, debounce_ms)
-        diff = abs(len(events) - target)
-        if diff < best_diff:
-            best = mid
-            best_events = events
-            best_diff = diff
-        if len(events) > target:
-            high = mid
-        elif len(events) < target:
-            low = mid
+        press_idx: int | None = None
+        if armed:
+            idxs = np.flatnonzero(down)
+            if idxs.size:
+                press_idx = int(idxs[0])
         else:
-            best = mid
-            best_events = events
-            break
+            if cooldown >= len(block):
+                cooldown -= len(block)
+            else:
+                offset = cooldown
+                cooldown = 0
+                up = arr[offset:] >= dyn_upper
+                if np.any(up):
+                    rearm_at = int(np.flatnonzero(up)[0] + offset)
+                    armed = True
+                    idxs = np.flatnonzero(down[rearm_at:])
+                    if idxs.size:
+                        press_idx = int(idxs[0] + rearm_at)
 
-    return best, best_events
+        if press_idx is not None:
+            presses += 1
+            armed = False
+            cooldown = refractory - (len(block) - press_idx - 1)
+            if cooldown <= 0:
+                cooldown = 0
+                armed = True
+        prev = block[-1] if len(block) else prev
+
+    return presses
 
 
-def _binary_search_debounce(
+_DEFAULT_BLOCK = 256
+
+
+def calibrate(
     samples: np.ndarray,
     fs: int,
-    upper: float,
-    lower: float,
-    target: int,
-) -> Tuple[int, List[int]]:
-    """Binary search ``debounce_ms`` for ``target`` events."""
+    target_presses: int,
+    *,
+    initial_gap: float = 0.30,
+    search_gap: Tuple[float, float] = (0.25, 0.35),
+    block_sizes: Tuple[int, ...] = (512, 256, 128, 64),
+) -> dict:
+    """Return optimal detection parameters for ``samples``."""
 
-    low, high = 20, 160
-    best_db = high
-    best_events = _offline_detect(samples, fs, upper, lower, best_db)
-    best_diff = abs(len(best_events) - target)
-
-    while low <= high:
-        mid = int(round((low + high) / 40.0)) * 20
-        mid = max(20, min(160, mid))
-        events = _offline_detect(samples, fs, upper, lower, mid)
-        diff = abs(len(events) - target)
-        if diff < best_diff or (diff == best_diff and mid < best_db):
-            best_db = mid
-            best_events = events
-            best_diff = diff
-        if diff == 0:
-            break
-        if len(events) > target:
-            low = mid + 20
-        else:
-            high = mid - 20
-    return best_db, best_events
-
-
-def _sweep_debounce(
-    samples: np.ndarray,
-    fs: int,
-    target: int,
-    upper: float = -0.05,
-    lower: float = -0.80,
-) -> Tuple[int, List[int]]:
-    """Return debounce giving event count closest to ``target``."""
-
-    best_db = 20
-    best_events = _offline_detect(samples, fs, upper, lower, best_db)
-    best_diff = abs(len(best_events) - target)
-
-    for db in range(40, 181, 20):
-        events = _offline_detect(samples, fs, upper, lower, db)
-        diff = abs(len(events) - target)
-        if diff < best_diff or (diff == best_diff and db < best_db):
-            best_db = db
-            best_events = events
-            best_diff = diff
-
-    return best_db, best_events
-
-
-def auto_calibrate(
-    samples: np.ndarray,
-    fs: int = 48_000,
-    target: int = 10,
-) -> DetectorConfig:
-    """Return ``DetectorConfig`` tuned for ``samples``."""
-
-    # Step 1 – pick debounce using loose thresholds
-    debounce, events = _sweep_debounce(samples, fs, target)
-
-    # Step 2 – binary search the upper threshold with GAP=0.30
-    gap = 0.30
-    upper, events = _binary_search_upper_exact(samples, fs, gap, debounce, target)
-
-    # Step 3 – line search different gaps if needed
-    if len(events) != target:
-        best_diff = abs(len(events) - target)
-        best_upper, best_gap, best_events = upper, gap, events
-        for gap in (0.25, 0.28, 0.30, 0.32, 0.35):
-            u, ev = _binary_search_upper_exact(samples, fs, gap, debounce, target)
-            diff = abs(len(ev) - target)
-            if diff < best_diff:
-                best_diff = diff
-                best_upper, best_gap, best_events = u, gap, ev
-                if diff == 0:
-                    break
-        upper, gap, events = best_upper, best_gap, best_events
-
-    cfg = replace(
-        DetectorConfig(),
-        upper_offset=upper,
-        lower_offset=upper - gap,
-        debounce_ms=debounce,
+    DEFAULTS = dict(
+        upper_offset=-0.20,
+        lower_offset=-0.50,
+        debounce_ms=35,
+        block_size=256,
     )
-    cfg.events = events  # type: ignore[attr-defined]
-    cfg.autocal_method = "searched"  # type: ignore[attr-defined]
 
-    if len(events) != target:
-        warnings.warn(AutoCalWarning("Could not exactly match target press count"))
+    small_block = min(block_sizes) if block_sizes else 64
+    count = _detect_events(
+        samples,
+        fs,
+        DEFAULTS["upper_offset"],
+        DEFAULTS["lower_offset"],
+        DEFAULTS["debounce_ms"],
+        small_block,
+    )
+    if count == target_presses:
+        return DEFAULTS.copy()
 
-    return cfg
+    upper_grid = np.linspace(-0.55, -0.10, 10)
+    gap_grid = np.linspace(0.25, 0.35, 5)
+    debounce_vals = range(20, 181, 20)
+
+    candidates: list[tuple[float, int, float, float, int]] = []
+    for u in upper_grid:
+        for g in gap_grid:
+            l = u - g
+            for db in debounce_vals:
+                c = _detect_events(samples, fs, u, l, db, small_block)
+                candidates.append((abs(c - target_presses), c, u, l, db))
+
+    candidates.sort(key=lambda t: t[0])
+    top8 = candidates[:8]
+
+    best_diff = float("inf")
+    best_u = DEFAULTS["upper_offset"]
+    best_gap = DEFAULTS["upper_offset"] - DEFAULTS["lower_offset"]
+    best_db = DEFAULTS["debounce_ms"]
+
+    for _, cnt, u0, l0, db0 in top8:
+        u_low, u_high = u0 - 0.1, u0 + 0.1
+        g_low, g_high = 0.22, 0.38
+        db_low, db_high = max(20, db0 - 20), db0 + 20
+        local_best_diff = float("inf")
+        local_best_u = u0
+        local_best_g = u0 - l0
+        local_best_db = db0
+
+        while u_high - u_low > 0.005 or g_high - g_low > 0.005 or db_high - db_low > 5:
+            u_mid = (u_high + u_low) / 2
+            g_mid = (g_high + g_low) / 2
+            db_mid = (db_high + db_low) / 2
+            count = _detect_events(
+                samples,
+                fs,
+                u_mid,
+                u_mid - g_mid,
+                int(round(db_mid)),
+                small_block,
+            )
+            diff = abs(count - target_presses)
+            if diff < local_best_diff or (
+                diff == local_best_diff and int(round(db_mid)) < local_best_db
+            ):
+                local_best_diff = diff
+                local_best_u = u_mid
+                local_best_g = g_mid
+                local_best_db = int(round(db_mid))
+
+            if count > target_presses:
+                u_low = u_mid
+                g_low = g_mid
+                db_low = db_mid
+            else:
+                u_high = u_mid
+                g_high = g_mid
+                db_high = db_mid
+
+        if local_best_diff < best_diff or (
+            local_best_diff == best_diff and local_best_db < best_db
+        ):
+            best_diff = local_best_diff
+            best_u = local_best_u
+            best_gap = local_best_g
+            best_db = local_best_db
+
+    best_l = best_u - best_gap
+
+    best_block = small_block
+    for size in sorted(block_sizes, reverse=True):
+        cnt = _detect_events(samples, fs, best_u, best_l, best_db, size)
+        if cnt == target_presses:
+            best_block = size
+            break
+
+    cnt = _detect_events(samples, fs, best_u, best_l, best_db, small_block)
+    if cnt != target_presses:
+        raise RuntimeError(f"search failed: expected {target_presses}, got {cnt}")
+
+    return {
+        "upper_offset": float(best_u),
+        "lower_offset": float(best_l),
+        "debounce_ms": int(best_db),
+        "block_size": int(best_block),
+    }

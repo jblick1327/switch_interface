@@ -1,16 +1,26 @@
-import sys
-from types import SimpleNamespace
-
-sys.modules.setdefault("sounddevice", SimpleNamespace())
-
 import numpy as np
-from switch_interface.auto_calibration import auto_calibrate
+from switch_interface.auto_calibration import calibrate, _detect_events
 
 
-def test_auto_calibrate_on_fixture():
+def test_calibrate_fixture():
     data = np.load("tests/data/ten_presses.npy")
-    cfg = auto_calibrate(data, fs=48_000, target=10)
-    assert isinstance(cfg.events, list)
-    assert all(isinstance(i, int) for i in cfg.events)
-    assert getattr(cfg, "autocal_method") in {"default_ok", "searched"}
-    assert cfg.upper_offset > cfg.lower_offset
+    cfg = calibrate(data, fs=48_000, target_presses=10)
+    assert isinstance(cfg, dict)
+    assert set(cfg) == {"upper_offset", "lower_offset", "debounce_ms", "block_size"}
+    assert cfg["upper_offset"] > cfg["lower_offset"]
+    assert isinstance(cfg["debounce_ms"], int)
+    assert isinstance(cfg["block_size"], int)
+    assert cfg["debounce_ms"] <= 60
+    assert 64 <= cfg["block_size"] <= 512
+
+    assert (
+        _detect_events(
+            data,
+            48_000,
+            cfg["upper_offset"],
+            cfg["lower_offset"],
+            cfg["debounce_ms"],
+            64,
+        )
+        == 10
+    )
