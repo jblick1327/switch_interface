@@ -1,18 +1,42 @@
+"""
+switch_interface/auto_calibration.py
+
+Automatic calibration routine with detailed DEBUG logging.
+Enable verbose output by passing ``verbose=True`` to ``calibrate`` or by
+setting the environment variable ``SWITCH_CALIB_VERBOSE=1``.
+"""
+
 from __future__ import annotations
 
+import logging
 import math
+import os
 from dataclasses import dataclass
 from typing import List
 
 import numpy as np
+from scipy.signal import find_peaks
 
 from .detection import EdgeState, detect_edges
 
+# ------------------------------------------------------------------ #
+# logging setup
+# ------------------------------------------------------------------ #
+logger = logging.getLogger("switch.calib")
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(
+        logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", "%H:%M:%S")
+    )
+    logger.addHandler(_h)
+logger.setLevel(logging.INFO)  # raised to DEBUG when verbose
 
+
+# ------------------------------------------------------------------ #
+# result container
+# ------------------------------------------------------------------ #
 @dataclass
 class CalibResult:
-    """Placeholder structure for automatic calibration results."""
-
     events: List[int]
     upper_offset: float
     lower_offset: float
@@ -20,9 +44,9 @@ class CalibResult:
     samplerate: int
 
 
-# ---------------------------------------------------------------------
-# helper: quick event counter using existing detection logic
-# ---------------------------------------------------------------------
+# ------------------------------------------------------------------ #
+# helpers
+# ------------------------------------------------------------------ #
 def _count_events(
     samples: np.ndarray,
     fs: int,
@@ -30,72 +54,116 @@ def _count_events(
     lower: float,
     debounce_ms: int,
     block: int = 64,
+    *,
+    tag: str = "",
 ) -> list[int]:
+    """Return indices of detected presses for given parameters."""
     refractory = math.ceil(debounce_ms / 1000 * fs)
     state = EdgeState(armed=True, cooldown=0)
     events: list[int] = []
     for start in range(0, len(samples), block):
         block_buf = samples[start : start + block]
-        state, pressed, idx = detect_edges(block_buf, state,
-                                           upper, lower, refractory)
+        state, pressed, idx = detect_edges(block_buf, state, upper, lower, refractory)
         if pressed:
             events.append(start + (idx or 0))
+    logger.debug(
+        "%s  _count_events → %d  (db=%d ms, up=%.3f, low=%.3f)",
+        tag,
+        len(events),
+        debounce_ms,
+        upper,
+        lower,
+    )
     return events
 
 
-# ---------------------------------------------------------------------
-# Phase 1 – amplitude analysis
-# ---------------------------------------------------------------------
-def _choose_thresholds(samples: np.ndarray) -> tuple[float, float]:
-    # idle ≈ top 20 % of samples
-    hi = np.percentile(samples, 80)
-    # troughs ≈ minima every ≥20 ms
-    inv = -samples
-    distance = 20            # ms
-    # convert to samples
-    distance = max(1, int(distance / 1000 * len(samples) / (samples.size)))
-    trough_idx, _ = np.lib.stride_tricks.sliding_window_view(
-        inv, 2).argmax(axis=1).nonzero()
-    troughs = samples[trough_idx]
-    if troughs.size == 0:
-        troughs = np.array([samples.min()])
-    depth = hi - np.median(troughs)
-    upper = hi - 0.40 * depth
-    lower = hi - 0.70 * depth
-    # ensure at least 0.25 FS gap
+def _choose_thresholds(
+    samples: np.ndarray, fs: int, *, tag: str = ""
+) -> tuple[float, float]:
+    """Estimate upper/lower offsets from idle & trough statistics."""
+    baseline = float(np.percentile(samples, 80))
+
+    distance = int(0.020 * fs)  # 20 ms
+    trough_idx, _ = find_peaks(-samples, distance=distance)
+    troughs = samples[trough_idx] if trough_idx.size else np.array([samples.min()])
+    depth = baseline - float(np.median(troughs))
+
+    upper = baseline - 0.40 * depth
+    lower = baseline - 0.70 * depth
     if upper - lower < 0.25 * depth:
         lower = upper - 0.25 * depth
-    return float(upper - hi), float(lower - hi)  # return as offsets
+
+    logger.debug(
+        "%s  _choose_thresholds → baseline=%.4f  depth=%.4f  "
+        "upper=%.4f (offset=%.4f)  lower=%.4f (offset=%.4f)",
+        tag,
+        baseline,
+        depth,
+        upper,
+        upper - baseline,
+        lower,
+        lower - baseline,
+    )
+    return float(upper - baseline), float(lower - baseline)
 
 
-# ---------------------------------------------------------------------
+# ------------------------------------------------------------------ #
 # public API
-# ---------------------------------------------------------------------
-def calibrate(samples: np.ndarray, fs: int) -> CalibResult:
-    """Automatic calibration that returns data-driven thresholds."""
-    # ---- Phase 1 ----
-    u_off, l_off = _choose_thresholds(samples)
+# ------------------------------------------------------------------ #
+def calibrate(
+    samples: np.ndarray,
+    fs: int,
+    *,
+    verbose: bool | None = None,
+) -> CalibResult:
+    """
+    Derive robust thresholds and debounce time from a representative clip.
 
-    # ---- Phase 2 – debounce sweep ----
-    best_db = None
-    best_recall = -1.0
-    gt_events = _count_events(samples, fs, u_off, l_off, 10)  # rough GT
-    gt_count = len(gt_events)
+    Set verbose=True (or env var SWITCH_CALIB_VERBOSE=1) for DEBUG output.
+    """
+    if verbose is None:  # env-toggle wins if caller didn't specify
+        verbose = os.getenv("SWITCH_CALIB_VERBOSE", "0") == "1"
+    if verbose:
+        logger.setLevel(logging.DEBUG)
 
-    for db in range(10, 61, 2):              # 10 … 60 ms in 2 ms steps
-        ev = _count_events(samples, fs, u_off, l_off, db)
-        recall = len(ev) / gt_count if gt_count else 0
-        if recall >= 0.99:                   # no misses
+    tag = "[CALIB]"
+
+    # -------- Phase 1 : amplitude analysis --------
+    u_off, l_off = _choose_thresholds(samples, fs, tag=tag)
+
+    # -------- Phase 2 : debounce sweep --------
+    gt_events = _count_events(samples, fs, u_off, l_off, 10, tag=f"{tag} GT")
+    gt_count = len(gt_events) or 1
+    logger.debug("%s  ground-truth count (10 ms debounce) = %d", tag, gt_count)
+
+    best_db: int | None = None
+    for db in range(10, 61, 2):
+        ev = _count_events(samples, fs, u_off, l_off, db, tag=f"{tag} db={db}")
+        recall = len(ev) / gt_count
+        logger.debug("%s  debounce=%d → events=%d  recall=%.3f", tag, db, len(ev), recall)
+        if recall >= 0.99:
             best_db = db
+            logger.debug("%s  selected debounce=%d ms (recall≥0.99)", tag, best_db)
             break
-        if recall > best_recall:
-            best_recall = recall
-            best_db = db
 
-    events = _count_events(samples, fs, u_off, l_off, best_db)
+    if best_db is None:  # fallback to best observed recall
+        best_db = max(range(10, 61, 2), key=lambda d: len(_count_events(samples, fs, u_off, l_off, d)))
+        logger.warning("%s  no debounce hit 0.99 recall – using %d ms", tag, best_db)
+
+    final_events = _count_events(samples, fs, u_off, l_off, best_db, tag=f"{tag} FINAL")
+
+    logger.info(
+        "%s  FINISHED  up=%.3f  low=%.3f  gap=%.3f  db=%d ms  events=%d",
+        tag,
+        u_off,
+        l_off,
+        u_off - l_off,
+        best_db,
+        len(final_events),
+    )
 
     return CalibResult(
-        events=events,
+        events=final_events,
         upper_offset=u_off,
         lower_offset=l_off,
         debounce_ms=best_db,
