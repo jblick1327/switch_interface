@@ -1,9 +1,12 @@
 """
 switch_interface/auto_calibration.py
+------------------------------------
 
-Automatic calibration routine with detailed DEBUG logging.
-Enable verbose output by passing ``verbose=True`` to ``calibrate`` or by
-setting the environment variable ``SWITCH_CALIB_VERBOSE=1``.
+Fast, data-driven calibration for clean digital-switch signals.
+
+• Pass ``verbose=True`` or set ``SWITCH_CALIB_VERBOSE=1`` for DEBUG logs.
+• Public API:
+      calibrate(samples, fs, *, target_presses=None, verbose=None) -> CalibResult
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ import logging
 import math
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import List
 
 import numpy as np
@@ -20,16 +24,14 @@ from scipy.signal import find_peaks
 from .detection import EdgeState, detect_edges
 
 # ------------------------------------------------------------------ #
-# logging setup
+# logging
 # ------------------------------------------------------------------ #
 logger = logging.getLogger("switch.calib")
 if not logger.handlers:
-    _h = logging.StreamHandler()
-    _h.setFormatter(
-        logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", "%H:%M:%S")
-    )
-    logger.addHandler(_h)
-logger.setLevel(logging.INFO)  # raised to DEBUG when verbose
+    h = logging.StreamHandler()
+    h.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", "%H:%M:%S"))
+    logger.addHandler(h)
+logger.setLevel(logging.INFO)              # DEBUG when verbose
 
 
 # ------------------------------------------------------------------ #
@@ -47,63 +49,20 @@ class CalibResult:
 # ------------------------------------------------------------------ #
 # helpers
 # ------------------------------------------------------------------ #
-def _count_events(
-    samples: np.ndarray,
-    fs: int,
-    upper: float,
-    lower: float,
-    debounce_ms: int,
-    block: int = 64,
-    *,
-    tag: str = "",
-) -> list[int]:
-    """Return indices of detected presses for given parameters."""
-    refractory = math.ceil(debounce_ms / 1000 * fs)
-    state = EdgeState(armed=True, cooldown=0)
-    events: list[int] = []
-    for start in range(0, len(samples), block):
-        block_buf = samples[start : start + block]
-        # detect_edges now returns only (state, pressed)
-        state, pressed = detect_edges(block_buf, state, upper, lower, refractory)
-        if pressed:
-            events.append(start)          # block start is close enough
-    logger.debug(
-        "%s  _count_events → %d  (db=%d ms, up=%.3f, low=%.3f)",
-        tag,
-        len(events),
-        debounce_ms,
-        upper,
-        lower,
-    )
-    return events
-
-
-def _has_duplicates(events: list[int], db_ms: int, fs: int) -> bool:
-    """Return True if any two successive events are closer than db_ms."""
-    min_gap = db_ms * fs // 1000
-    return any((b - a) < min_gap for a, b in zip(events, events[1:]))
-
-
-
-def _choose_thresholds(
-    samples: np.ndarray, fs: int, *, tag: str = ""
-) -> tuple[float, float]:
-    """Estimate upper/lower offsets from idle & trough statistics."""
+def _choose_thresholds(samples: np.ndarray, fs: int, *, tag: str = "") -> tuple[float, float]:
     baseline = float(np.percentile(samples, 80))
-
-    distance = int(0.020 * fs)  # 20 ms
-    trough_idx, _ = find_peaks(-samples, distance=distance)
+    trough_idx, _ = find_peaks(-samples, distance=int(0.020 * fs))
     troughs = samples[trough_idx] if trough_idx.size else np.array([samples.min()])
     depth = baseline - float(np.median(troughs))
 
     upper = baseline - 0.40 * depth
     lower = baseline - 0.70 * depth
-    if upper - lower < 0.25 * depth:
+    if (upper - lower) < 0.25 * depth:          # enforce a minimum gap
         lower = upper - 0.25 * depth
 
     logger.debug(
         "%s  _choose_thresholds → baseline=%.4f  depth=%.4f  "
-        "upper=%.4f (offset=%.4f)  lower=%.4f (offset=%.4f)",
+        "upper=%.4f (off=%.4f)  lower=%.4f (off=%.4f)",
         tag,
         baseline,
         depth,
@@ -113,6 +72,59 @@ def _choose_thresholds(
         lower - baseline,
     )
     return float(upper - baseline), float(lower - baseline)
+
+
+def _has_duplicates(events: list[int], db_ms: int, fs: int) -> bool:
+    min_gap = db_ms * fs // 1000
+    return any((b - a) < min_gap for a, b in zip(events, events[1:]))
+
+
+def _count_events(
+    samples: np.ndarray,
+    fs: int,
+    upper: float,
+    lower: float,
+    debounce_ms: int,
+    block: int = 64,
+) -> list[int]:
+    """Return *indices* of detected presses – memoised for speed."""
+    return _memoised_count(
+        samples.tobytes(),        # hashable key
+        samples.dtype.str,        # original dtype!
+        samples.size,
+        fs,
+        upper,
+        lower,
+        debounce_ms,
+        block,
+    )
+
+
+@lru_cache(maxsize=256)
+def _memoised_count(
+    buf: bytes,
+    dtype_str: str,
+    n: int,
+    fs: int,
+    upper: float,
+    lower: float,
+    debounce_ms: int,
+    block: int,
+) -> tuple[int]:
+    """Immutable tuple result so lru_cache can store it safely."""
+    samples = np.frombuffer(buf, dtype=np.dtype(dtype_str), count=n)
+
+    refractory = math.ceil(debounce_ms / 1000 * fs)
+    state = EdgeState(armed=True, cooldown=0)
+    events: list[int] = []
+
+    for start in range(0, len(samples), block):
+        blk = samples[start : start + block]
+        state, pressed = detect_edges(blk, state, upper, lower, refractory)
+        if pressed:
+            events.append(start)
+
+    return tuple(events)
 
 
 # ------------------------------------------------------------------ #
@@ -125,89 +137,77 @@ def calibrate(
     target_presses: int | None = None,
     verbose: bool | None = None,
 ) -> CalibResult:
-    """
-    Derive robust thresholds and debounce time from a representative clip.
 
-    Set verbose=True (or env var SWITCH_CALIB_VERBOSE=1) for DEBUG output.
-    """
-    if verbose is None:  # env-toggle wins if caller didn't specify
+    if verbose is None:
         verbose = os.getenv("SWITCH_CALIB_VERBOSE", "0") == "1"
     if verbose:
         logger.setLevel(logging.DEBUG)
 
     tag = "[CALIB]"
 
-    # -------- Phase 1 : amplitude analysis --------
+    # ---- Phase 0: first-guess thresholds --------------------------- #
     u_off, l_off = _choose_thresholds(samples, fs, tag=tag)
 
-    # -------- Phase 1 : debounce from fixed press count --------------
+    # ---- Phase 1: choose debounce --------------------------------- #
+    db_list = range(10, 61, 2)
+    best_db = 10
+    best_events = _count_events(samples, fs, u_off, l_off, best_db)
+    score = lambda ev: abs(len(ev) - (target_presses or len(ev)))
+
     if target_presses is not None:
-        best_db, events = None, []
-        for db in range(10, 61, 2):                # 10‥60 ms
-            ev = _count_events(samples, fs, u_off, l_off, db,
-                               tag=f"{tag} db={db}")
-            if len(ev) == target_presses:
-                best_db, events = db, ev
-                logger.debug("%s  debounce=%d → EXACT match %d presses",
-                             tag, db, target_presses)
+        best_err = score(best_events)
+        for d in db_list[1:]:
+            ev = _count_events(samples, fs, u_off, l_off, d)
+            err = score(ev)
+            if err == 0:
+                best_db, best_events = d, ev
+                logger.debug("%s  debounce=%d → EXACT match %d presses", tag, d, target_presses)
                 break
-        if best_db is None:                         # no exact hit
-            best_db, events = min(
-                ((d, _count_events(samples, fs, u_off, l_off, d))
-                 for d in range(10, 61, 2)),
-                key=lambda t: abs(len(t[1]) - target_presses),
-            )
-            logger.warning("%s  exact match failed; using %d ms (count=%d)",
-                           tag, best_db, len(events))
+            if err < best_err:
+                best_db, best_events, best_err = d, ev, err
+        if best_err:
+            logger.warning("%s  no exact debounce; using %d ms (count=%d)", tag, best_db, len(best_events))
     else:
-        # fallback: original recall-based sweep
-        gt_events = _count_events(samples, fs, u_off, l_off, 10,
-                                  tag=f"{tag} GT")
-        gt_count  = len(gt_events) or 1
-        best_db, events = None, []
-        for db in range(10, 61, 2):
-            ev = _count_events(samples, fs, u_off, l_off, db,
-                               tag=f"{tag} db={db}")
-            if len(ev) / gt_count >= 0.99:
-                best_db, events = db, ev
+        ref = _count_events(samples, fs, u_off, l_off, 10)
+        ref_n = max(1, len(ref))
+        for d in db_list[1:]:
+            ev = _count_events(samples, fs, u_off, l_off, d)
+            if len(ev) / ref_n >= 0.98:
+                best_db, best_events = d, ev
                 break
-        if best_db is None:
-            best_db, events = max(
-                ((d, _count_events(samples, fs, u_off, l_off, d))
-                 for d in range(10, 61, 2)),
-                key=lambda t: len(t[1]),
-            )
 
-    # -------- Phase 2 : robustness loop ----------------------------
-    db = best_db
-    max_db = 60
+    # ---- Phase 2: one hysteresis tweak if still off --------------- #
+    if target_presses is not None and len(best_events) != target_presses:
+        direction = 1 if len(best_events) < target_presses else -1
+        scale = 1.0
+        for _ in range(4):
+            scale *= 1.15 ** direction
+            ev = _count_events(samples, fs, u_off * scale, l_off * scale, best_db)
+            if len(ev) == target_presses:
+                u_off, l_off, best_events = u_off * scale, l_off * scale, ev
+                break
+            if score(ev) < score(best_events):
+                u_off, l_off, best_events = u_off * scale, l_off * scale, ev
 
-    while _has_duplicates(events, db, fs) and db < max_db:
-        logger.debug("%s  duplicates found at %d ms → raising debounce", tag, db)
-        db += 2
-        events = _count_events(samples, fs, u_off, l_off, db, tag=f"{tag} db+")
-    # if still duplicates at 60 ms, widen hysteresis by 5 % and retry once
-    if _has_duplicates(events, db, fs):
-        logger.debug("%s  widening hysteresis by 5 %%", tag)
-        u_off *= 1.05
-        l_off *= 1.05
-        db = max(db, 20)
-        events = _count_events(samples, fs, u_off, l_off, db, tag=f"{tag} wide")
+    # ---- Phase 3: ensure no double-fires -------------------------- #
+    while _has_duplicates(list(best_events), best_db, fs) and best_db < 60:
+        best_db += 2
+        best_events = _count_events(samples, fs, u_off, l_off, best_db)
 
     logger.info(
-        "%s  FINAL  up=%.3f  low=%.3f  gap=%.3f  db=%d ms  events=%d",
+        "%s  FINAL up=%.3f  low=%.3f  gap=%.3f  db=%d ms  events=%d",
         tag,
         u_off,
         l_off,
         u_off - l_off,
-        db,
-        len(events),
+        best_db,
+        len(best_events),
     )
 
     return CalibResult(
-        events=events,
+        events=list(best_events),
         upper_offset=float(u_off),
         lower_offset=float(l_off),
-        debounce_ms=int(db),
+        debounce_ms=int(best_db),
         samplerate=fs,
     )

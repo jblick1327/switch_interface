@@ -51,12 +51,14 @@ def detect_edges(
         if cooldown >= len(block):
             cooldown -= len(block)
         else:
-            armed = True
-            offset = cooldown
-            remaining = crossings[offset:]
-            idxs = np.flatnonzero(remaining)
-            if idxs.size:
-                press_index = idxs[0] + offset
+            offset = cooldown                    # cooldown just expired
+            # re-arm ONLY if the signal has risen back above dyn_upper
+            if samples[offset] >= dyn_upper:
+                armed = True
+                remaining = crossings[offset:]
+                idxs = np.flatnonzero(remaining)
+                if idxs.size:
+                    press_index = idxs[0] + offset
     else:
         idxs = np.flatnonzero(crossings)
         if idxs.size:
@@ -67,7 +69,9 @@ def detect_edges(
         cooldown = refractory_samples - (len(block) - press_index - 1)
         if cooldown <= 0:
             cooldown = 0
-            armed = True
+            # re-arm only after release
+            if block[-1] >= dyn_upper:
+                armed = True
 
     return (
         EdgeState(

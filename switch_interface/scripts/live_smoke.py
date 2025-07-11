@@ -3,9 +3,9 @@ from switch_interface.auto_calibration import calibrate
 from switch_interface.detection import listen
 
 FS = 48_000
-TARGET = 20
+TARGET = 15
 print(f"▶  Press the switch exactly {TARGET} times …")
-rec = sd.rec(int(8 * FS), samplerate=FS, channels=1, dtype="int16")
+rec = sd.rec(int(17 * FS), samplerate=FS, channels=1, dtype="int16")
 sd.wait()
 samples = rec[:, 0].astype("float32") / 32768.0
 cfg  = calibrate(samples, fs=FS, target_presses=TARGET, verbose=True)
