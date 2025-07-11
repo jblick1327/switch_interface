@@ -20,48 +20,84 @@ class CalibResult:
     samplerate: int
 
 
+# ---------------------------------------------------------------------
+# helper: quick event counter using existing detection logic
+# ---------------------------------------------------------------------
+def _count_events(
+    samples: np.ndarray,
+    fs: int,
+    upper: float,
+    lower: float,
+    debounce_ms: int,
+    block: int = 64,
+) -> list[int]:
+    refractory = math.ceil(debounce_ms / 1000 * fs)
+    state = EdgeState(armed=True, cooldown=0)
+    events: list[int] = []
+    for start in range(0, len(samples), block):
+        block_buf = samples[start : start + block]
+        state, pressed, idx = detect_edges(block_buf, state,
+                                           upper, lower, refractory)
+        if pressed:
+            events.append(start + (idx or 0))
+    return events
+
+
+# ---------------------------------------------------------------------
+# Phase 1 – amplitude analysis
+# ---------------------------------------------------------------------
+def _choose_thresholds(samples: np.ndarray) -> tuple[float, float]:
+    # idle ≈ top 20 % of samples
+    hi = np.percentile(samples, 80)
+    # troughs ≈ minima every ≥20 ms
+    inv = -samples
+    distance = 20            # ms
+    # convert to samples
+    distance = max(1, int(distance / 1000 * len(samples) / (samples.size)))
+    trough_idx, _ = np.lib.stride_tricks.sliding_window_view(
+        inv, 2).argmax(axis=1).nonzero()
+    troughs = samples[trough_idx]
+    if troughs.size == 0:
+        troughs = np.array([samples.min()])
+    depth = hi - np.median(troughs)
+    upper = hi - 0.40 * depth
+    lower = hi - 0.70 * depth
+    # ensure at least 0.25 FS gap
+    if upper - lower < 0.25 * depth:
+        lower = upper - 0.25 * depth
+    return float(upper - hi), float(lower - hi)  # return as offsets
+
+
+# ---------------------------------------------------------------------
+# public API
+# ---------------------------------------------------------------------
 def calibrate(samples: np.ndarray, fs: int) -> CalibResult:
-    """Skeleton automatic calibration routine.
+    """Automatic calibration that returns data-driven thresholds."""
+    # ---- Phase 1 ----
+    u_off, l_off = _choose_thresholds(samples)
 
-    Parameters
-    ----------
-    samples:
-        Input audio samples (mono) as a 1‑D array.
-    fs:
-        Sample rate of ``samples``.
+    # ---- Phase 2 – debounce sweep ----
+    best_db = None
+    best_recall = -1.0
+    gt_events = _count_events(samples, fs, u_off, l_off, 10)  # rough GT
+    gt_count = len(gt_events)
 
-    Returns
-    -------
-    CalibResult
-        Placeholder result with hard‑coded values for now.
-    """
+    for db in range(10, 61, 2):              # 10 … 60 ms in 2 ms steps
+        ev = _count_events(samples, fs, u_off, l_off, db)
+        recall = len(ev) / gt_count if gt_count else 0
+        if recall >= 0.99:                   # no misses
+            best_db = db
+            break
+        if recall > best_recall:
+            best_recall = recall
+            best_db = db
 
-    events = _detect_events(samples, fs)
+    events = _count_events(samples, fs, u_off, l_off, best_db)
+
     return CalibResult(
         events=events,
-        upper_offset=-0.2,
-        lower_offset=-0.5,
-        debounce_ms=40,
+        upper_offset=u_off,
+        lower_offset=l_off,
+        debounce_ms=best_db,
         samplerate=fs,
     )
-
-
-def _detect_events(samples: np.ndarray, fs: int) -> List[int]:
-    """Detect switch events in ``samples`` using existing logic."""
-
-    block_size = 64
-    state = EdgeState(armed=True, cooldown=0)
-    refractory = int(math.ceil((40 / 1000) * fs))
-    events: List[int] = []
-    for start in range(0, len(samples), block_size):
-        block = samples[start : start + block_size]
-        state, pressed, press_idx = detect_edges(
-            block,
-            state,
-            -0.2,
-            -0.5,
-            refractory,
-        )
-        if pressed:
-            events.append(start + (press_idx or 0))
-    return events
