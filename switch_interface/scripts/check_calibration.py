@@ -8,6 +8,8 @@ data = np.load(CLIP)
 cfg  = calibrate(data, fs=FS, verbose=True)   # prints DEBUG info
 gt   = _count_events(data, FS,
                      cfg.upper_offset, cfg.lower_offset, debounce_ms=8)
+from switch_interface.auto_calibration import _has_duplicates
+assert not _has_duplicates(cfg.events, cfg.debounce_ms, FS)
 
 precision = 1.0                                # by design, no false+
 recall    = len(cfg.events) / len(gt)

@@ -78,6 +78,12 @@ def _count_events(
     return events
 
 
+def _has_duplicates(events: list[int], db_ms: int, fs: int) -> bool:
+    """Return True if any two successive events are closer than db_ms."""
+    min_gap = db_ms * fs // 1000
+    return any((b - a) < min_gap for a, b in zip(events, events[1:]))
+
+
 
 def _choose_thresholds(
     samples: np.ndarray, fs: int, *, tag: str = ""
@@ -154,20 +160,38 @@ def calibrate(
 
     final_events = _count_events(samples, fs, u_off, l_off, best_db, tag=f"{tag} FINAL")
 
+    # -------- Phase 2 : robustness loop ----------------------------
+    db = best_db
+    u_off_final, l_off_final = u_off, l_off
+    events = final_events
+    max_db = 60
+
+    while _has_duplicates(events, db, fs) and db < max_db:
+        logger.debug("%s  duplicates found at %d ms → raising debounce", tag, db)
+        db += 2
+        events = _count_events(samples, fs, u_off, l_off, db, tag=f"{tag} db+")
+    # if still duplicates at 60 ms, widen hysteresis by 5 % and retry once
+    if _has_duplicates(events, db, fs):
+        logger.debug("%s  widening hysteresis by 5 %%", tag)
+        u_off *= 1.05
+        l_off *= 1.05
+        db = max(db, 20)
+        events = _count_events(samples, fs, u_off, l_off, db, tag=f"{tag} wide")
+
     logger.info(
-        "%s  FINISHED  up=%.3f  low=%.3f  gap=%.3f  db=%d ms  events=%d",
+        "%s  FINAL  up=%.3f  low=%.3f  gap=%.3f  db=%d ms  events=%d",
         tag,
         u_off,
         l_off,
         u_off - l_off,
-        best_db,
-        len(final_events),
+        db,
+        len(events),
     )
 
     return CalibResult(
-        events=final_events,
-        upper_offset=u_off,
-        lower_offset=l_off,
-        debounce_ms=best_db,
+        events=events,
+        upper_offset=float(u_off),
+        lower_offset=float(l_off),
+        debounce_ms=int(db),
         samplerate=fs,
     )
