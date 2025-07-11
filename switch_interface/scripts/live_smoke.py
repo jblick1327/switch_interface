@@ -3,11 +3,12 @@ from switch_interface.auto_calibration import calibrate
 from switch_interface.detection import listen
 
 FS = 48_000
-print("▶  Capturing 10 s live clip for on-the-spot calibration …")
-rec = sd.rec(int(10 * FS), samplerate=FS, channels=1, dtype="float32")
+TARGET = 20
+print(f"▶  Press the switch exactly {TARGET} times …")
+rec = sd.rec(int(8 * FS), samplerate=FS, channels=1, dtype="int16")
 sd.wait()
-clip = rec[:, 0]
-cfg  = calibrate(clip, fs=FS, verbose=True)
+samples = rec[:, 0].astype("float32") / 32768.0
+cfg  = calibrate(samples, fs=FS, target_presses=TARGET, verbose=True)
 
 print("\n▶  Real-time listening (Ctrl-C to stop). Press the switch at will.")
 def on_press():
