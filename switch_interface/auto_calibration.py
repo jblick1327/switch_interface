@@ -122,6 +122,7 @@ def calibrate(
     samples: np.ndarray,
     fs: int,
     *,
+    target_presses: int | None = None,
     verbose: bool | None = None,
 ) -> CalibResult:
     """
@@ -139,31 +140,46 @@ def calibrate(
     # -------- Phase 1 : amplitude analysis --------
     u_off, l_off = _choose_thresholds(samples, fs, tag=tag)
 
-    # -------- Phase 2 : debounce sweep --------
-    gt_events = _count_events(samples, fs, u_off, l_off, 10, tag=f"{tag} GT")
-    gt_count = len(gt_events) or 1
-    logger.debug("%s  ground-truth count (10 ms debounce) = %d", tag, gt_count)
-
-    best_db: int | None = None
-    for db in range(10, 61, 2):
-        ev = _count_events(samples, fs, u_off, l_off, db, tag=f"{tag} db={db}")
-        recall = len(ev) / gt_count
-        logger.debug("%s  debounce=%d → events=%d  recall=%.3f", tag, db, len(ev), recall)
-        if recall >= 0.99:
-            best_db = db
-            logger.debug("%s  selected debounce=%d ms (recall≥0.99)", tag, best_db)
-            break
-
-    if best_db is None:  # fallback to best observed recall
-        best_db = max(range(10, 61, 2), key=lambda d: len(_count_events(samples, fs, u_off, l_off, d)))
-        logger.warning("%s  no debounce hit 0.99 recall – using %d ms", tag, best_db)
-
-    final_events = _count_events(samples, fs, u_off, l_off, best_db, tag=f"{tag} FINAL")
+    # -------- Phase 1 : debounce from fixed press count --------------
+    if target_presses is not None:
+        best_db, events = None, []
+        for db in range(10, 61, 2):                # 10‥60 ms
+            ev = _count_events(samples, fs, u_off, l_off, db,
+                               tag=f"{tag} db={db}")
+            if len(ev) == target_presses:
+                best_db, events = db, ev
+                logger.debug("%s  debounce=%d → EXACT match %d presses",
+                             tag, db, target_presses)
+                break
+        if best_db is None:                         # no exact hit
+            best_db, events = min(
+                ((d, _count_events(samples, fs, u_off, l_off, d))
+                 for d in range(10, 61, 2)),
+                key=lambda t: abs(len(t[1]) - target_presses),
+            )
+            logger.warning("%s  exact match failed; using %d ms (count=%d)",
+                           tag, best_db, len(events))
+    else:
+        # fallback: original recall-based sweep
+        gt_events = _count_events(samples, fs, u_off, l_off, 10,
+                                  tag=f"{tag} GT")
+        gt_count  = len(gt_events) or 1
+        best_db, events = None, []
+        for db in range(10, 61, 2):
+            ev = _count_events(samples, fs, u_off, l_off, db,
+                               tag=f"{tag} db={db}")
+            if len(ev) / gt_count >= 0.99:
+                best_db, events = db, ev
+                break
+        if best_db is None:
+            best_db, events = max(
+                ((d, _count_events(samples, fs, u_off, l_off, d))
+                 for d in range(10, 61, 2)),
+                key=lambda t: len(t[1]),
+            )
 
     # -------- Phase 2 : robustness loop ----------------------------
     db = best_db
-    u_off_final, l_off_final = u_off, l_off
-    events = final_events
     max_db = 60
 
     while _has_duplicates(events, db, fs) and db < max_db:
