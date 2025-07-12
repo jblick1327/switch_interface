@@ -19,7 +19,9 @@ from functools import lru_cache
 from typing import List
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy.signal import find_peaks
+from scipy.ndimage import uniform_filter1d
 
 from .detection import EdgeState, detect_edges
 
@@ -29,9 +31,11 @@ from .detection import EdgeState, detect_edges
 logger = logging.getLogger("switch.calib")
 if not logger.handlers:
     h = logging.StreamHandler()
-    h.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", "%H:%M:%S"))
+    h.setFormatter(
+        logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", "%H:%M:%S")
+    )
     logger.addHandler(h)
-logger.setLevel(logging.INFO)              # DEBUG when verbose
+logger.setLevel(logging.INFO)  # DEBUG when verbose
 
 
 # ------------------------------------------------------------------ #
@@ -39,6 +43,11 @@ logger.setLevel(logging.INFO)              # DEBUG when verbose
 # ------------------------------------------------------------------ #
 @dataclass
 class CalibResult:
+    """Outcome of :func:`calibrate`.
+
+    Offsets are relative to the baseline median.
+    """
+
     events: List[int]
     upper_offset: float
     lower_offset: float
@@ -49,29 +58,60 @@ class CalibResult:
 # ------------------------------------------------------------------ #
 # helpers
 # ------------------------------------------------------------------ #
-def _choose_thresholds(samples: np.ndarray, fs: int, *, tag: str = "") -> tuple[float, float]:
-    baseline = float(np.percentile(samples, 80))
-    trough_idx, _ = find_peaks(-samples, distance=int(0.020 * fs))
-    troughs = samples[trough_idx] if trough_idx.size else np.array([samples.min()])
-    depth = baseline - float(np.median(troughs))
+def _rolling_baseline(raw: np.ndarray, fs: int) -> np.ndarray:
+    """Return a baseline vector based on a rolling 80th percentile."""
+    win_len = int(fs)
+    if raw.ndim != 1:
+        raise ValueError("raw must be 1-D")
+    if win_len <= 0:
+        raise ValueError("fs must be > 0")
 
-    upper = baseline - 0.40 * depth
-    lower = baseline - 0.70 * depth
-    if (upper - lower) < 0.25 * depth:          # enforce a minimum gap
+    if len(raw) < win_len:
+        base = np.quantile(raw, 0.80)
+        return np.full_like(raw, base)
+
+    windows = sliding_window_view(raw, win_len)
+    base = np.quantile(windows, 0.80, axis=-1)
+    base = uniform_filter1d(base, size=fs, mode="nearest")
+
+    base = np.pad(base, (win_len - 1, 0), mode="edge")[: raw.size]
+    return base.astype(raw.dtype, copy=False)
+
+
+def _choose_thresholds(
+    raw: np.ndarray, baseline: np.ndarray, fs: int, *, tag: str = ""
+) -> tuple[float, float]:
+    """Return absolute thresholds based on trough depth.
+
+    Parameters
+    ----------
+    raw:
+        1-D switch signal.
+    baseline:
+        Rolling baseline vector aligned with ``raw``.
+    fs:
+        Sample rate in Hz.
+    """
+    baseline_med = float(np.median(baseline))
+    residual = raw - baseline
+    trough_idx, _ = find_peaks(-residual, distance=int(0.020 * fs))
+    troughs = raw[trough_idx] if trough_idx.size else np.array([raw.min()])
+    depth = baseline_med - float(np.median(troughs))
+
+    upper = baseline_med - 0.40 * depth
+    lower = baseline_med - 0.70 * depth
+    if (upper - lower) < 0.25 * depth:  # enforce a minimum gap
         lower = upper - 0.25 * depth
 
     logger.debug(
-        "%s  _choose_thresholds → baseline=%.4f  depth=%.4f  "
-        "upper=%.4f (off=%.4f)  lower=%.4f (off=%.4f)",
+        "%s  _choose_thresholds → baseline=%.4f  depth=%.4f  upper=%.4f  lower=%.4f",
         tag,
-        baseline,
+        baseline_med,
         depth,
         upper,
-        upper - baseline,
         lower,
-        lower - baseline,
     )
-    return float(upper - baseline), float(lower - baseline)
+    return float(upper), float(lower)
 
 
 def _has_duplicates(events: list[int], db_ms: int, fs: int) -> bool:
@@ -89,8 +129,8 @@ def _count_events(
 ) -> list[int]:
     """Return *indices* of detected presses – memoised for speed."""
     return _memoised_count(
-        samples.tobytes(),        # hashable key
-        samples.dtype.str,        # original dtype!
+        samples.tobytes(),  # hashable key
+        samples.dtype.str,  # original dtype!
         samples.size,
         fs,
         upper,
@@ -145,8 +185,13 @@ def calibrate(
 
     tag = "[CALIB]"
 
+    baseline_vec = _rolling_baseline(samples, fs)
+
     # ---- Phase 0: first-guess thresholds --------------------------- #
-    u_off, l_off = _choose_thresholds(samples, fs, tag=tag)
+    upper, lower = _choose_thresholds(samples, baseline_vec, fs, tag=tag)
+    baseline_med = float(np.median(baseline_vec))
+    u_off = upper - baseline_med
+    l_off = lower - baseline_med
 
     # ---- Phase 1: choose debounce --------------------------------- #
     db_list = range(10, 61, 2)
@@ -161,12 +206,19 @@ def calibrate(
             err = score(ev)
             if err == 0:
                 best_db, best_events = d, ev
-                logger.debug("%s  debounce=%d → EXACT match %d presses", tag, d, target_presses)
+                logger.debug(
+                    "%s  debounce=%d → EXACT match %d presses", tag, d, target_presses
+                )
                 break
             if err < best_err:
                 best_db, best_events, best_err = d, ev, err
         if best_err:
-            logger.warning("%s  no exact debounce; using %d ms (count=%d)", tag, best_db, len(best_events))
+            logger.warning(
+                "%s  no exact debounce; using %d ms (count=%d)",
+                tag,
+                best_db,
+                len(best_events),
+            )
     else:
         ref = _count_events(samples, fs, u_off, l_off, 10)
         ref_n = max(1, len(ref))
@@ -181,7 +233,7 @@ def calibrate(
         direction = 1 if len(best_events) < target_presses else -1
         scale = 1.0
         for _ in range(4):
-            scale *= 1.15 ** direction
+            scale *= 1.15**direction
             ev = _count_events(samples, fs, u_off * scale, l_off * scale, best_db)
             if len(ev) == target_presses:
                 u_off, l_off, best_events = u_off * scale, l_off * scale, ev
