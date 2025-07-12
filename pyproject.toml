@@ -35,6 +35,8 @@ dev = [
   "mypy>=1.16",
   "black>=25.1",
   "isort>=6.0",
+  "ruff>=0.4",
+  "scipy>=1.11",
 ]
 
 # ---------- Console & GUI entry points ----------
@@ -60,3 +62,7 @@ profile = "black"
 python_version = "3.11"
 warn_unused_configs = true
 ignore_missing_imports = true
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E401", "E402", "E501", "E731", "F401", "F841"]
