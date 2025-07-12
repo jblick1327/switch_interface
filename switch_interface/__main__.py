@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from switch_interface.logging import setup as _setup_logging
+
+_setup_logging()
+
 import argparse
-import os
 import threading
 from queue import Empty, SimpleQueue
 
@@ -14,12 +17,27 @@ from .kb_gui import VirtualKeyboard
 from .kb_layout_io import load_keyboard
 from .pc_control import PCController
 from .scan_engine import Scanner
-from .logging import setup as setup_logging
+
+from pathlib import Path
+import os
+import subprocess
+import sys
+
+_LOG_PATH = Path.home() / ".switch_interface.log"
+
+
+def _open_log_if_exists() -> None:
+    if _LOG_PATH.exists():
+        if sys.platform == "win32":
+            os.startfile(_LOG_PATH)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.run(["open", _LOG_PATH])
+        else:
+            subprocess.run(["xdg-open", _LOG_PATH])
 
 
 def main(argv: list[str] | None = None) -> None:
     """Launch the scanning keyboard interface."""
-    setup_logging()
     parser = argparse.ArgumentParser(
         description="Run the switch-accessible virtual keyboard",
     )
@@ -99,4 +117,8 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover - manual entry point
-    main()
+    try:
+        main()
+    except Exception:
+        _open_log_if_exists()
+        raise

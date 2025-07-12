@@ -44,6 +44,12 @@ Layouts live in `switch_interface/resources/layouts/`. Each JSON file defines `p
 
 You can point `--layout` to any file in this format or set the `LAYOUT_PATH` environment variable.
 
+## Logging
+
+All console output is also written to `~/.switch_interface.log` by default. You
+may pass a custom file path to :func:`switch_interface.logging.setup` if you
+need to store logs elsewhere.
+
 ## Testing
 
 Run the unit tests after installing the project:
