@@ -53,6 +53,9 @@ class CalibResult:
     lower_offset: float
     debounce_ms: int
     samplerate: int
+    baseline_std: float = 0.0
+    min_gap: float = float("inf")
+    calib_ok: bool = True
 
 
 # ------------------------------------------------------------------ #
@@ -246,6 +249,42 @@ def calibrate(
         best_db += 2
         best_events = _count_events(samples, fs, u_off, l_off, best_db)
 
+    # ---- Diagnostics ------------------------------------------------- #
+    idle_mask = np.ones(len(samples), dtype=bool)
+    pad = int(0.05 * fs)
+    for ev in best_events:
+        start = max(0, ev - pad)
+        end = min(len(samples), ev + pad)
+        idle_mask[start:end] = False
+    residual = samples - baseline_vec
+    if idle_mask.any():
+        baseline_std = float(residual[idle_mask].std())
+    else:
+        baseline_std = float("nan")
+    if len(best_events) <= 1:
+        min_gap = float("inf")
+    else:
+        diffs = np.diff(best_events)
+        min_gap = float(diffs.min() / fs)
+
+    trough_idx, _ = find_peaks(-(samples - baseline_vec), distance=int(0.020 * fs))
+    troughs = samples[trough_idx] if trough_idx.size else np.array([samples.min()])
+    baseline_vals = (
+        baseline_vec[trough_idx]
+        if trough_idx.size
+        else np.array([np.median(baseline_vec)])
+    )
+    depth_med = float(np.median(baseline_vals - troughs))
+
+    target_events = target_presses if target_presses is not None else len(best_events)
+    calib_ok = (
+        idle_mask.any()
+        and depth_med > 3 * baseline_std
+        and abs(len(best_events) - target_events) <= 0.1 * target_events
+    )
+    if not calib_ok:
+        logger.warning("%s  calib_ok=False", tag)
+
     logger.info(
         "%s  FINAL up=%.3f  low=%.3f  gap=%.3f  db=%d ms  events=%d",
         tag,
@@ -262,4 +301,7 @@ def calibrate(
         lower_offset=float(l_off),
         debounce_ms=int(best_db),
         samplerate=fs,
+        baseline_std=baseline_std,
+        min_gap=min_gap,
+        calib_ok=calib_ok,
     )
