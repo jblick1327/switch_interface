@@ -60,7 +60,7 @@ class Predictor:
     def _fallback_letters(self, prefix: str, k: int) -> list[str]:
         cleaned = "".join(c for c in prefix.lower() if c.isalpha())
 
-        counts = Counter()
+        counts: Counter[str] = Counter()
         if not cleaned:
             counts = self.fallback_starts
         else:
