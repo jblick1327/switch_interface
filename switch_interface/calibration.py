@@ -55,15 +55,15 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
 
     #sample rate selection. TODO: add a loop that polls the hardware for each and filter the list
     STANDARD_RATES = [8000, 16000, 22050, 32000, 44100, 48000, 88200, 96000]
-    sr_var = tk.IntVar(master=root, value=config.samplerate)
+    sr_var = tk.StringVar(master=root, value=str(config.samplerate))
     tk.Label(root, text="Sample rate").pack(padx=10, pady=(10, 0))
-    tk.OptionMenu(root, sr_var, *STANDARD_RATES).pack(fill=tk.X, padx=10)
+    tk.OptionMenu(root, sr_var, *[str(r) for r in STANDARD_RATES]).pack(fill=tk.X, padx=10)
 
     #do the same with block size
     STANDARD_BLOCKS = [64, 128, 256, 512, 1024, 2048]
-    bs_var = tk.IntVar(master=root, value=config.blocksize)
+    bs_var = tk.StringVar(master=root, value=str(config.blocksize))
     tk.Label(root, text="Block size").pack(padx=10, pady=(10, 0))
-    tk.OptionMenu(root, bs_var, *STANDARD_BLOCKS).pack(fill=tk.X, padx=10)
+    tk.OptionMenu(root, bs_var, *[str(b) for b in STANDARD_BLOCKS]).pack(fill=tk.X, padx=10)
 
     wave_canvas = tk.Canvas(root, width=500, height=150, bg="white")
     wave_canvas.pack(padx=10, pady=5)
@@ -115,7 +115,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
     tk.OptionMenu(root, dev_var, *[d["name"] for d in devices]).pack(fill=tk.X, padx=10)
 
     result: DetectorConfig | None = None
-    buf = np.zeros(sr_var.get() * 2, dtype=np.float32)
+    buf = np.zeros(int(sr_var.get()) * 2, dtype=np.float32)
     buf_index = 0
     bias = 0.0
     stream: sd.InputStream | None = None
@@ -147,7 +147,7 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
             buf[buf_index:] = mono[:first]
             buf[: n - first] = mono[first:]
         buf_index = (buf_index + n) % len(buf)
-        refract = int(math.ceil((db_var.get() / 1000) * sr_var.get()))
+        refract = int(math.ceil((db_var.get() / 1000) * int(sr_var.get())))
         edge_state, pressed = detect_edges(
             mono,
             edge_state,
@@ -162,8 +162,8 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         nonlocal stream
         extra = get_extra_settings()
         kwargs = dict(
-            samplerate=sr_var.get(),
-            blocksize=bs_var.get(),
+            samplerate=int(sr_var.get()),
+            blocksize=int(bs_var.get()),
             channels=1,
             dtype="float32",
             callback=_callback,
@@ -229,8 +229,8 @@ def calibrate(config: DetectorConfig | None = None) -> DetectorConfig:
         result = DetectorConfig(
             upper_offset=u_var.get(),
             lower_offset=l_var.get(),
-            samplerate=sr_var.get(),
-            blocksize=bs_var.get(),
+            samplerate=int(sr_var.get()),
+            blocksize=int(bs_var.get()),
             debounce_ms=db_var.get(),
             device=dev_var.get() or None,
         )

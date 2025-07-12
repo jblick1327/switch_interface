@@ -153,8 +153,9 @@ def _memoised_count(
     lower: float,
     debounce_ms: int,
     block: int,
-) -> tuple[int]:
-    """Immutable tuple result so lru_cache can store it safely."""
+
+) -> list[int]:
+    """Return a list so :func:`_count_events` can use the result directly."""
     samples = np.frombuffer(buf, dtype=np.dtype(dtype_str), count=n)
 
     refractory = math.ceil(debounce_ms / 1000 * fs)
@@ -167,7 +168,7 @@ def _memoised_count(
         if pressed:
             events.append(start)
 
-    return tuple(events)
+    return events
 
 
 # ------------------------------------------------------------------ #
@@ -252,9 +253,9 @@ def calibrate(
     # ---- Diagnostics ------------------------------------------------- #
     idle_mask = np.ones(len(samples), dtype=bool)
     pad = int(0.05 * fs)
-    for ev in best_events:
-        start = max(0, ev - pad)
-        end = min(len(samples), ev + pad)
+    for idx in best_events:
+        start = max(0, idx - pad)
+        end = min(len(samples), idx + pad)
         idle_mask[start:end] = False
     residual = samples - baseline_vec
     if idle_mask.any():
@@ -277,7 +278,7 @@ def calibrate(
     depth_med = float(np.median(baseline_vals - troughs))
 
     target_events = target_presses if target_presses is not None else len(best_events)
-    calib_ok = (
+    calib_ok = bool(
         idle_mask.any()
         and depth_med > 3 * baseline_std
         and abs(len(best_events) - target_events) <= 0.1 * target_events
