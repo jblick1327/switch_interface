@@ -15,11 +15,12 @@ LAYOUT_PACKAGE = "switch_interface.resources.layouts"
 
 def list_layouts() -> list[Path]:
     """Return available layout file paths bundled with the package."""
-    files = []
+    files: list[Path] = []
     for entry in resources.files(LAYOUT_PACKAGE).iterdir():
-        if entry.suffix == ".json":
-            files.append(entry)
-    return sorted(files)
+        p = Path(str(entry))
+        if p.name.endswith(".json"):
+            files.append(p)
+    return sorted(files, key=lambda p: p.name)
 
 
 def main() -> None:
