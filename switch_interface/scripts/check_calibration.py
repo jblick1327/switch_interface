@@ -1,10 +1,13 @@
+from pathlib import Path
+
 import numpy as np
 from switch_interface.auto_calibration import calibrate, _count_events
 
-CLIP = "calibration_long.npy"
-FS   = 48_000
+ROOT = Path(__file__).resolve().parents[2]
+CLIP = ROOT / "tests" / "data" / "calibration_long.npy"
+FS = 48_000
 
-data = np.load(CLIP)
+data = np.load(str(CLIP))
 cfg  = calibrate(data, fs=FS, target_presses=50, verbose=True)   # prints DEBUG info
 gt   = _count_events(data, FS,
                      cfg.upper_offset, cfg.lower_offset, debounce_ms=8)
