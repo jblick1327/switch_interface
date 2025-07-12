@@ -29,12 +29,6 @@ from .detection import EdgeState, detect_edges
 # logging
 # ------------------------------------------------------------------ #
 logger = logging.getLogger("switch.calib")
-if not logger.handlers:
-    h = logging.StreamHandler()
-    h.setFormatter(
-        logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", "%H:%M:%S")
-    )
-    logger.addHandler(h)
 logger.setLevel(logging.INFO)  # DEBUG when verbose
 
 

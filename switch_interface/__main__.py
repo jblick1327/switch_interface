@@ -14,10 +14,12 @@ from .kb_gui import VirtualKeyboard
 from .kb_layout_io import load_keyboard
 from .pc_control import PCController
 from .scan_engine import Scanner
+from .logging import setup as setup_logging
 
 
 def main(argv: list[str] | None = None) -> None:
     """Launch the scanning keyboard interface."""
+    setup_logging()
     parser = argparse.ArgumentParser(
         description="Run the switch-accessible virtual keyboard",
     )
