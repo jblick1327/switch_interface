@@ -16,25 +16,25 @@ keywords        = ["assistive-technology", "switch-access", "scanning", "AAC"]
 # ---------- Runtime dependencies ----------
 dependencies = [
   # audio & signal processing
-  "sounddevice>=0.4.6",
-  "numpy>=1.26",
+  "sounddevice>=0.5",
+  "numpy>=2.0",
   # input / OS integration
-  "pynput>=1.7.7",
+  "pynput>=1.8",
   # predictive text
-  "wordfreq>=3.0",
+  "wordfreq>=3.1",
 ]
 
 # ---------- Optional groups ----------
 [project.optional-dependencies]
 dev = [
   # testing
-  "pytest>=8.0",
-  "pytest-cov>=5.0",
+  "pytest>=8.4",
+  "pytest-cov>=6.2",
   # lint / type-check / format
-  "flake8>=7.0",
-  "mypy>=1.10",
-  "black>=24.4",
-  "isort>=5.13",
+  "flake8>=7.3",
+  "mypy>=1.16",
+  "black>=25.1",
+  "isort>=6.0",
 ]
 
 # ---------- Console & GUI entry points ----------
